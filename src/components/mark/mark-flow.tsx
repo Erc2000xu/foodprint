@@ -21,9 +21,9 @@ type UserLocation = { latitude: number; longitude: number };
 const initial: MarkResult = {};
 const categoryOptions = [["restaurant", "餐厅"], ["cafe", "咖啡馆"], ["drinks", "茶饮/饮品"], ["bar", "酒吧/Pub"], ["bakery_dessert", "烘焙/甜品"], ["street_food", "小吃/街头餐饮"], ["other_food_drink", "其他餐饮"]] as const;
 
-async function searchAmapTips(keyword: string): Promise<{ candidates: MarkCandidate[]; error?: string }> {
+async function searchAmapTips(keyword: string, location?: UserLocation): Promise<{ candidates: MarkCandidate[]; error?: string }> {
   const supabase = createClient();
-  const { data, error } = await supabase.functions.invoke("amap-poi-search", { body: { keyword } });
+  const { data, error } = await supabase.functions.invoke("amap-poi-search", { body: { keyword, location } });
   if (error) {
     const context = error.context;
     if (context instanceof Response) {
@@ -60,28 +60,24 @@ function formatDistance(distanceMeters?: number) {
   return `${((distanceMeters ?? 0) / 1_000).toFixed(1)} km`;
 }
 
+function cityTagTone(city: string) {
+  const code = Array.from(city).reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  return ["city-tag--teal", "city-tag--coral", "city-tag--gold"][code % 3];
+}
+
 function StarRating({ name, label, required = false }: { name: string; label: string; required?: boolean }) {
   const [value, setValue] = useState<number | null>(null);
-  const chooseRating = (event: React.MouseEvent<HTMLButtonElement>, star: number) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const isKeyboard = event.detail === 0;
-    const selectedValue = isKeyboard || event.clientX - bounds.left >= bounds.width / 2 ? star : star - 0.5;
-    setValue(selectedValue);
+  const chooseRating = (star: number) => {
+    setValue((current) => !required && current === star ? null : star);
   };
 
   return <fieldset className={`star-rating${required ? " star-rating--required" : ""}`}>
     <legend>{label}{required ? <span className="required-mark">必填</span> : <span className="optional-mark">可选</span>}</legend>
     <input type="hidden" name={name} value={value ?? ""} />
     <div className="star-rating__controls" role="group" aria-label={label}>
-      {[1, 2, 3, 4, 5].map((star) => {
-        const fill = value === null ? "empty" : value >= star ? "full" : value === star - 0.5 ? "half" : "empty";
-        return <button key={star} className={`star-rating__button star-rating__button--${fill}`} type="button" onClick={(event) => chooseRating(event, star)} aria-label={`设置为 ${star} 分；轻点左半边可选 ${star - 0.5} 分`} aria-pressed={value === star || value === star - 0.5}>
-          <span aria-hidden="true">☆</span><span className="star-rating__fill">★</span>
-        </button>;
-      })}
-      {value !== null && !required && <button className="rating-clear" type="button" onClick={() => setValue(null)}>清除</button>}
+      {[1, 2, 3, 4, 5].map((star) => <button key={star} className={`star-rating__button${value !== null && value >= star ? " star-rating__button--selected" : ""}`} type="button" onClick={() => chooseRating(star)} aria-label={`设置为 ${star} 星`} aria-pressed={value === star}>★</button>)}
     </div>
-    <p className="star-rating__hint">{value === null ? required ? "请选择 1–5 分；轻点星星左半边可选半分。" : "不填写不会影响保存。" : `${value.toFixed(1)} 分`}</p>
+    <p className="star-rating__hint">{value === null ? required ? "请选择 1–5 星。" : "不填写不会影响保存。" : `${value} 星${required ? "" : "；再次点选同一颗星可清除。"}`}</p>
   </fieldset>;
 }
 
@@ -115,7 +111,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
         setHasSearched(true);
         setSearching(false);
       };
-      void searchAmapTips(keyword.trim())
+      void searchAmapTips(keyword.trim(), userLocation)
         .then(({ candidates, error }) => finish(candidates, error ? `高德搜索失败：${error}` : ""))
         .catch(() => finish([], "高德搜索服务暂时无法连接。"));
     }, 420);
@@ -201,7 +197,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
     {searchError && <p className="form-error">{searchError}</p>}
     {selectionError && <p className="form-error">{selectionError}</p>}
     {isLookingUp && <p className="search-state">正在检查共同地图…</p>}
-    <ul className="poi-results">{results.map((candidate) => <li key={candidate.poiId}><button type="button" onClick={() => choose(candidate)} disabled={isLookingUp}><strong>{candidate.name}</strong><span>{candidate.address || `${candidate.city} ${candidate.district}`}</span>{candidate.distanceMeters !== undefined && Number.isFinite(candidate.distanceMeters) && <em>{formatDistance(candidate.distanceMeters)}</em>}</button></li>)}</ul>
+    <ul className="poi-results">{results.map((candidate) => <li key={candidate.poiId}><button type="button" onClick={() => choose(candidate)} disabled={isLookingUp}><strong>{candidate.name}</strong><span>{candidate.address || `${candidate.city} ${candidate.district}`}</span><div className="poi-result-tags">{candidate.city && <em className={`city-tag ${cityTagTone(candidate.city)}`}>{candidate.city}</em>}{candidate.distanceMeters !== undefined && Number.isFinite(candidate.distanceMeters) && <em className="distance-tag">{formatDistance(candidate.distanceMeters)}</em>}</div></button></li>)}</ul>
     {hasSearched && !searchError && !searching && !results.length && <p className="search-state">没有找到结果。请换一个关键词，或稍后重试。</p>}
   </section>;
 }

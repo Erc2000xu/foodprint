@@ -22,6 +22,12 @@ function coordinatesFrom(location: unknown) {
   return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
 }
 
+function cityFrom(value: unknown) {
+  if (typeof value !== "string") return "";
+  const match = value.match(/(北京市|天津市|上海市|重庆市|[^省自治区特别行政区]+市)/);
+  return match?.[1] ?? "";
+}
+
 Deno.serve(async (request) => {
   const origin = request.headers.get("origin");
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
@@ -42,27 +48,42 @@ Deno.serve(async (request) => {
     if (membershipError) throw membershipError;
     if (!memberships?.length) return response({ error: "你尚未加入可用的共同地图。" }, 403, origin);
 
-    const body = await request.json() as { keyword?: unknown };
+    const body = await request.json() as { keyword?: unknown; location?: { latitude?: unknown; longitude?: unknown } };
     const keyword = typeof body.keyword === "string" ? body.keyword.trim() : "";
     if (keyword.length < 2 || keyword.length > 80) return response({ error: "请输入 2 至 80 个字符的地点名称。" }, 400, origin);
     const amapKey = Deno.env.get("AMAP_WEBSERVICE_KEY");
     if (!amapKey) return response({ error: "地点搜索服务尚未配置。" }, 503, origin);
 
-    const upstream = new URL("https://restapi.amap.com/v3/assistant/inputtips");
+    const latitude = Number(body.location?.latitude);
+    const longitude = Number(body.location?.longitude);
+    const hasLocation = Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+    const upstream = new URL(hasLocation ? "https://restapi.amap.com/v3/place/around" : "https://restapi.amap.com/v3/assistant/inputtips");
     upstream.searchParams.set("key", amapKey);
     upstream.searchParams.set("keywords", keyword);
-    upstream.searchParams.set("city", "全国");
-    upstream.searchParams.set("datatype", "all");
+    if (hasLocation) {
+      upstream.searchParams.set("location", `${longitude},${latitude}`);
+      upstream.searchParams.set("radius", "50000");
+      upstream.searchParams.set("offset", "25");
+      upstream.searchParams.set("page", "1");
+      upstream.searchParams.set("extensions", "base");
+      upstream.searchParams.set("sortrule", "distance");
+    } else {
+      upstream.searchParams.set("city", "全国");
+      upstream.searchParams.set("datatype", "all");
+    }
     const upstreamResponse = await fetch(upstream, { signal: AbortSignal.timeout(8_000) });
-    const payload = await upstreamResponse.json() as { status?: string; info?: string; infocode?: string; tips?: Array<{ id?: string; name?: string; address?: string; district?: string; location?: unknown }> };
+    const payload = await upstreamResponse.json() as { status?: string; info?: string; infocode?: string; tips?: Array<{ id?: string; name?: string; address?: string; city?: string; district?: string; location?: unknown }>; pois?: Array<{ id?: string; name?: string; address?: string; cityname?: string; adname?: string; location?: unknown }> };
     if (!upstreamResponse.ok || payload.status !== "1") return response({ error: payload.info ?? "高德地点搜索失败。", errorCode: payload.infocode }, 502, origin);
 
-    const candidates = (payload.tips ?? []).flatMap((tip) => {
+    const source = hasLocation
+      ? (payload.pois ?? []).map((poi) => ({ id: poi.id, name: poi.name, address: poi.address, city: poi.cityname, district: poi.adname, location: poi.location }))
+      : (payload.tips ?? []);
+    const candidates = source.flatMap((tip) => {
       const coordinates = coordinatesFrom(tip.location);
       return tip.id && tip.name && coordinates
-        ? [{ poiId: tip.id, name: tip.name, address: tip.address ?? "", city: "", district: tip.district ?? "", ...coordinates }]
+        ? [{ poiId: tip.id, name: tip.name, address: tip.address ?? "", city: tip.city ?? cityFrom(tip.district), district: tip.district ?? "", ...coordinates }]
         : [];
-    }).slice(0, 10);
+    }).slice(0, hasLocation ? 25 : 10);
     return response({ candidates }, 200, origin);
   } catch (error) {
     console.error("AMap POI search failed", { message: error instanceof Error ? error.message : "unknown error" });
