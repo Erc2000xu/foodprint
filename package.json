@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "bootstrap:owner": "node --env-file=.env.local scripts/bootstrap-owner.mjs"
+    "bootstrap:owner": "node --env-file=.env.local scripts/bootstrap-owner.mjs",
+    "repair:owner-email": "node --env-file=.env.local scripts/repair-owner-email.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.3",
