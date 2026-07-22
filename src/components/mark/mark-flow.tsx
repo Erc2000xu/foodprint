@@ -31,8 +31,8 @@ export function MarkFlow({ apiKey, initialCandidate }: { apiKey?: string; initia
       void loadAmap(apiKey, ["AMap.AutoComplete", "AMap.PlaceSearch"]).then((AMap) => {
         const searchPlaces = () => {
           const search = new AMap.PlaceSearch({ pageSize: 8, city: "全国", citylimit: false });
-          search.search(keyword.trim(), (status: string, result: { poiList?: { pois?: Array<{ id?: string; name?: string; address?: string; cityname?: string; adname?: string; location?: { lng: number; lat: number } }> } }) => {
-            if (status !== "complete") { finish([], "高德地点搜索暂时没有响应，请稍后重试。"); return; }
+          search.search(keyword.trim(), (status: string, result: { info?: string; infocode?: string; message?: string; poiList?: { pois?: Array<{ id?: string; name?: string; address?: string; cityname?: string; adname?: string; location?: { lng: number; lat: number } }> } }) => {
+            if (status !== "complete") { const reason = result.info ?? result.message ?? status; finish([], `高德搜索失败：${reason}${result.infocode ? `（${result.infocode}）` : ""}`); return; }
             finish((result.poiList?.pois ?? []).flatMap((poi) => poi.id && poi.name && poi.location ? [{ poiId: poi.id, name: poi.name, address: poi.address ?? "", city: poi.cityname ?? "", district: poi.adname ?? "", latitude: poi.location.lat, longitude: poi.location.lng }] : []));
           });
         };
