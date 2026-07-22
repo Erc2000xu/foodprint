@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/actions";
+import { categoryOptions, qualityLabels, sceneTags, type PlaceCategory } from "@/lib/mark-options";
 import { createClient } from "@/lib/supabase/client";
 
 export type MarkCandidate = {
@@ -19,8 +20,6 @@ export type MarkCandidate = {
 type UserLocation = { latitude: number; longitude: number };
 
 const initial: MarkResult = {};
-const categoryOptions = [["restaurant", "餐厅"], ["cafe", "咖啡馆"], ["drinks", "茶饮/饮品"], ["bar", "酒吧/Pub"], ["bakery_dessert", "烘焙/甜品"], ["street_food", "小吃/街头餐饮"], ["other_food_drink", "其他餐饮"]] as const;
-
 async function searchAmapTips(keyword: string, location?: UserLocation): Promise<{ candidates: MarkCandidate[]; error?: string }> {
   const supabase = createClient();
   const { data, error } = await supabase.functions.invoke("amap-poi-search", { body: { keyword, location } });
@@ -90,6 +89,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
   const [selected, setSelected] = useState<MarkCandidate | undefined>(initialCandidate);
   const [alreadyInGroup, setAlreadyInGroup] = useState(Boolean(initialCandidate));
   const [selectionError, setSelectionError] = useState("");
+  const [primaryCategory, setPrimaryCategory] = useState<PlaceCategory>("restaurant");
   const [userLocation, setUserLocation] = useState<UserLocation>();
   const [locationState, setLocationState] = useState("");
   const [isLookingUp, startLookup] = useTransition();
@@ -166,16 +166,22 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       <input type="hidden" name="latitude" value={selected.latitude} />
       <input type="hidden" name="longitude" value={selected.longitude} />
       <input type="hidden" name="branch_name" value="" />
-      <label>地点类型<select name="primary_category" defaultValue="restaurant">{categoryOptions.map(([value, categoryLabel]) => <option key={value} value={value}>{categoryLabel}</option>)}</select></label>
+      <label>地点类型<select name="primary_category" value={primaryCategory} onChange={(event) => setPrimaryCategory(event.target.value as PlaceCategory)}>{categoryOptions.map(([value, categoryLabel]) => <option key={value} value={value}>{categoryLabel}</option>)}</select></label>
       <label className="attestation"><input name="attested" type="checkbox" required /> <span>我确认已亲自到访或体验过这里，内容基于真实体验。<b>必填</b></span></label>
       <StarRating name="overall_rating" label="综合体验" required />
       <div className="rating-grid">
-        <StarRating name="quality_rating" label="出品质量" />
+        <StarRating name="quality_rating" label={qualityLabels[primaryCategory]} />
         <StarRating name="value_rating" label="性价比" />
         <StarRating name="environment_rating" label="环境氛围" />
         <StarRating name="service_rating" label="服务体验" />
         <StarRating name="uniqueness_rating" label="独特性" />
       </div>
+      <fieldset className="scene-tag-picker">
+        <legend>适合什么场景 <span className="optional-mark">可选，可多选</span></legend>
+        <div className="scene-tag-picker__options">
+          {sceneTags.map(([slug, label]) => <label key={slug}><input type="checkbox" name="scene_tags" value={slug} /><span>{label}</span></label>)}
+        </div>
+      </fieldset>
       {alreadyInGroup ? <label>是否推荐<select name="would_recommend" defaultValue="true"><option value="true">愿意推荐</option><option value="false">不推荐</option></select></label> : <><input type="hidden" name="would_recommend" value="true" /><p className="first-mark-note">首次收录必须是你愿意推荐给朋友的地点。</p></>}
       <label>是否愿意再去 <span className="optional-mark">可选</span><select name="would_revisit" defaultValue=""><option value="">不填写</option><option value="yes">愿意再去</option><option value="maybe">看情况</option><option value="no">不愿意再去</option></select></label>
       <label>最近到访日期 <span className="optional-mark">可选</span><input name="last_visited_on" type="date" /></label>

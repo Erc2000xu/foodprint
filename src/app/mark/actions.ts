@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { sceneTags } from "@/lib/mark-options";
 import { createClient } from "@/lib/supabase/server";
 
 export type PoiLookup = { error?: string; found?: boolean };
@@ -13,6 +14,7 @@ const rating = z.coerce.number().min(1).max(5).refine((value) => Number.isIntege
 const optionalRating = z.preprocess((value) => value === "" || value === null ? undefined : value, rating.optional());
 const optionalDate = z.preprocess((value) => value === "" || value === null ? undefined : value, z.string().date().optional());
 const optionalRevisit = z.preprocess((value) => value === "" || value === null ? undefined : value, z.enum(["yes", "maybe", "no"]).optional());
+const sceneTagSlugs = sceneTags.map(([slug]) => slug) as [string, ...string[]];
 
 async function getActiveGroupId() {
   const supabase = await createClient();
@@ -76,7 +78,8 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     overall_rating: rating, quality_rating: optionalRating, value_rating: optionalRating, environment_rating: optionalRating, service_rating: optionalRating, uniqueness_rating: optionalRating,
     would_recommend: z.enum(["true", "false"]), would_revisit: optionalRevisit, first_visited_on: optionalDate, last_visited_on: optionalDate,
     short_review: z.string().trim().max(1000).optional(), recommended_items: z.string().max(400).optional(), price_per_person: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().min(0).max(100000).optional()), attested: z.literal("on"),
-  }).safeParse(Object.fromEntries(formData));
+    scene_tags: z.array(z.enum(sceneTagSlugs)).max(sceneTagSlugs.length),
+  }).safeParse({ ...Object.fromEntries(formData), scene_tags: formData.getAll("scene_tags") });
   if (!fields.success) return { error: fields.error.issues[0]?.message ?? "请检查填写内容。" };
   const value = fields.data;
   const { data, error } = await activeGroup.supabase.rpc("save_place_mark", {
@@ -89,6 +92,13 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     p_service_rating: value.service_rating ?? null, p_uniqueness_rating: value.uniqueness_rating ?? null, p_would_revisit: value.would_revisit ?? null,
   });
   if (error || !data?.[0]?.mark_id) return { error: error?.message ?? "保存标记失败。" };
+  const { error: sceneTagError } = await activeGroup.supabase.rpc("set_place_mark_scene_tags", {
+    p_mark_id: data[0].mark_id,
+    p_scene_tag_slugs: value.scene_tags,
+  });
+  if (sceneTagError) return { error: `真实标记已保存，但场景标签暂未保存：${sceneTagError.message}` };
   revalidatePath("/");
+  revalidatePath("/discover");
+  revalidatePath(`/place/${data[0].group_place_id}`);
   return { success: "真实标记已保存，地点已加入共同地图。" };
 }
