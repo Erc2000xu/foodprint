@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 
 export type InviteResult = { error?: string; inviteUrl?: string };
+export type ManagementResult = { error?: string; success?: string };
 
 export async function createInvitation(_: InviteResult, formData: FormData): Promise<InviteResult> {
   const groupId = z.string().uuid().safeParse(formData.get("group_id"));
@@ -20,4 +21,32 @@ export async function createInvitation(_: InviteResult, formData: FormData): Pro
   if (error || !data?.[0]?.token) return { error: error?.message ?? "创建邀请失败。" };
   revalidatePath("/admin");
   return { inviteUrl: `${process.env.NEXT_PUBLIC_APP_URL}/join/${data[0].token}` };
+}
+
+export async function revokeInvitation(_: ManagementResult, formData: FormData): Promise<ManagementResult> {
+  const invitationId = z.string().uuid().safeParse(formData.get("invitation_id"));
+  if (!invitationId.success) return { error: "邀请信息无效，请刷新后重试。" };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("revoke_invitation", { p_invitation_id: invitationId.data });
+  if (error) return { error: error.message };
+  revalidatePath("/admin");
+  return { success: "邀请链接已撤销。" };
+}
+
+export async function updateMemberStatus(_: ManagementResult, formData: FormData): Promise<ManagementResult> {
+  const groupId = z.string().uuid().safeParse(formData.get("group_id"));
+  const userId = z.string().uuid().safeParse(formData.get("user_id"));
+  const status = z.enum(["active", "suspended"]).safeParse(formData.get("status"));
+  if (!groupId.success || !userId.success || !status.success) return { error: "成员信息无效，请刷新后重试。" };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("update_member_status", {
+    p_group_id: groupId.data,
+    p_user_id: userId.data,
+    p_status: status.data,
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/admin");
+  return { success: status.data === "suspended" ? "成员已暂停。" : "成员已恢复。" };
 }
