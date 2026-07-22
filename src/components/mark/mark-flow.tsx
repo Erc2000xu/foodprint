@@ -11,7 +11,9 @@ const ratings = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 
 async function searchAmapTips(keyword: string): Promise<{ candidates: MarkCandidate[]; error?: string }> {
   const response = await fetch(`/api/poi-search?keyword=${encodeURIComponent(keyword)}`);
-  const payload = await response.json() as { candidates?: MarkCandidate[]; error?: string; errorCode?: string };
+  let payload: { candidates?: MarkCandidate[]; error?: string; errorCode?: string };
+  try { payload = await response.json() as { candidates?: MarkCandidate[]; error?: string; errorCode?: string }; }
+  catch { return { candidates: [], error: `地点搜索接口响应异常（HTTP ${response.status}）` }; }
   if (!response.ok) return { candidates: [], error: `${payload.error ?? `HTTP ${response.status}`}${payload.errorCode ? `（${payload.errorCode}）` : ""}` };
   return { candidates: payload.candidates ?? [] };
 }
