@@ -9,7 +9,7 @@ const navigation = [
   { label: "我的", icon: "◉" },
 ];
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, activeNav = "地图" }: { children: ReactNode; activeNav?: string }) {
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -24,11 +24,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       <main className="app-main">{children}</main>
       <nav className="bottom-nav" aria-label="主导航">
-        {navigation.map(({ label, icon, active, add }) => (
+        {navigation.map(({ label, icon, add }) => (
           <Link
-            aria-current={active ? "page" : undefined}
-            className={`nav-item${active ? " nav-item--active" : ""}${add ? " nav-item--add" : ""}`}
-            href={label === "我的" ? "/admin" : add ? "/#add-mark" : "/"}
+            aria-current={label === activeNav ? "page" : undefined}
+            className={`nav-item${label === activeNav ? " nav-item--active" : ""}${add ? " nav-item--add" : ""}`}
+            href={label === "我的" ? "/admin" : add ? "/mark" : "/"}
             key={label}
           >
             <span className="nav-item__icon" aria-hidden="true">{icon}</span>
