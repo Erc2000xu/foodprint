@@ -10,6 +10,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
 
   const { path } = await context.params;
   const upstreamPath = path.join("/");
+  if (upstreamPath === "security") {
+    return NextResponse.json({ securityJsCode: process.env.AMAP_SECURITY_KEY }, { headers: { "cache-control": "no-store" } });
+  }
   if (!upstreamPath || !/^[a-zA-Z0-9/_-]+$/.test(upstreamPath)) return NextResponse.json({ message: "无效的地图请求。" }, { status: 400 });
 
   const upstream = new URL(upstreamPath.startsWith("v4/map/styles") ? `${AMAP_WEB_API}/${upstreamPath}` : `${AMAP_REST_API}/${upstreamPath}`);
