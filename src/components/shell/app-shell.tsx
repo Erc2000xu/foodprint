@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link
             aria-current={active ? "page" : undefined}
             className={`nav-item${active ? " nav-item--active" : ""}${add ? " nav-item--add" : ""}`}
-            href={add ? "/#add-mark" : "/"}
+            href={label === "我的" ? "/admin" : add ? "/#add-mark" : "/"}
             key={label}
           >
             <span className="nav-item__icon" aria-hidden="true">{icon}</span>
