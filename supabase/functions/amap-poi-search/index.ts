@@ -16,6 +16,12 @@ function response(body: Record<string, unknown>, status: number, origin: string 
   return new Response(JSON.stringify(body), { status, headers: corsHeaders(origin) });
 }
 
+function coordinatesFrom(location: unknown) {
+  const values = Array.isArray(location) ? location : typeof location === "string" ? location.split(",") : [];
+  const [longitude, latitude] = values.map(Number);
+  return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
+}
+
 Deno.serve(async (request) => {
   const origin = request.headers.get("origin");
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
@@ -48,13 +54,13 @@ Deno.serve(async (request) => {
     upstream.searchParams.set("city", "全国");
     upstream.searchParams.set("datatype", "all");
     const upstreamResponse = await fetch(upstream, { signal: AbortSignal.timeout(8_000) });
-    const payload = await upstreamResponse.json() as { status?: string; info?: string; infocode?: string; tips?: Array<{ id?: string; name?: string; address?: string; district?: string; location?: string }> };
+    const payload = await upstreamResponse.json() as { status?: string; info?: string; infocode?: string; tips?: Array<{ id?: string; name?: string; address?: string; district?: string; location?: unknown }> };
     if (!upstreamResponse.ok || payload.status !== "1") return response({ error: payload.info ?? "高德地点搜索失败。", errorCode: payload.infocode }, 502, origin);
 
     const candidates = (payload.tips ?? []).flatMap((tip) => {
-      const [longitude, latitude] = (tip.location ?? "").split(",").map(Number);
-      return tip.id && tip.name && Number.isFinite(latitude) && Number.isFinite(longitude)
-        ? [{ poiId: tip.id, name: tip.name, address: tip.address ?? "", city: "", district: tip.district ?? "", latitude, longitude }]
+      const coordinates = coordinatesFrom(tip.location);
+      return tip.id && tip.name && coordinates
+        ? [{ poiId: tip.id, name: tip.name, address: tip.address ?? "", city: "", district: tip.district ?? "", ...coordinates }]
         : [];
     }).slice(0, 10);
     return response({ candidates }, 200, origin);
