@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
+// AMap is a mainland-China provider. Keep this small proxy close to it instead
+// of Vercel's default US function region, where outbound connectivity is less reliable.
+export const runtime = "edge";
+export const preferredRegion = "hnd1";
+
 type AmapTip = { id?: string; name?: string; address?: string; district?: string; location?: string };
 
 function coordinatesFrom(location?: string) {
