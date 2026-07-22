@@ -2,11 +2,11 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 const navigation = [
-  { label: "地图", icon: "⌖", active: true },
-  { label: "发现", icon: "◫" },
-  { label: "标记", icon: "+", add: true },
-  { label: "动态", icon: "◌" },
-  { label: "我的", icon: "◉" },
+  { label: "地图", icon: "⌖", href: "/" },
+  { label: "发现", icon: "◫", href: "/discover" },
+  { label: "标记", icon: "+", href: "/mark", add: true },
+  { label: "动态", icon: "◌", href: "/activity" },
+  { label: "我的", icon: "◉", href: "/admin" },
 ];
 
 export function AppShell({ children, activeNav = "地图" }: { children: ReactNode; activeNav?: string }) {
@@ -24,11 +24,11 @@ export function AppShell({ children, activeNav = "地图" }: { children: ReactNo
       </header>
       <main className="app-main">{children}</main>
       <nav className="bottom-nav" aria-label="主导航">
-        {navigation.map(({ label, icon, add }) => (
+        {navigation.map(({ label, icon, href, add }) => (
           <Link
             aria-current={label === activeNav ? "page" : undefined}
             className={`nav-item${label === activeNav ? " nav-item--active" : ""}${add ? " nav-item--add" : ""}`}
-            href={label === "我的" ? "/admin" : add ? "/mark" : "/"}
+            href={href}
             key={label}
           >
             <span className="nav-item__icon" aria-hidden="true">{icon}</span>
