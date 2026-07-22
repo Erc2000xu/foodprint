@@ -3,12 +3,24 @@
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/actions";
-import { loadAmap } from "@/lib/amap/load-amap";
 
 export type MarkCandidate = { poiId: string; name: string; address: string; city: string; district: string; latitude: number; longitude: number };
 const initial: MarkResult = {};
 const categoryOptions = [["restaurant", "餐厅"], ["cafe", "咖啡馆"], ["drinks", "茶饮/饮品"], ["bar", "酒吧/Pub"], ["bakery_dessert", "烘焙/甜品"], ["street_food", "小吃/街头餐饮"], ["other_food_drink", "其他餐饮"]] as const;
 const ratings = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+function parseLocation(location?: string): { latitude: number; longitude: number } | null {
+  const [longitude, latitude] = (location ?? "").split(",").map(Number);
+  return Number.isFinite(latitude) && Number.isFinite(longitude) ? { latitude, longitude } : null;
+}
+
+async function searchAmapTips(keyword: string, apiKey: string): Promise<{ candidates: MarkCandidate[]; error?: string }> {
+  const query = new URLSearchParams({ key: apiKey, keywords: keyword, city: "全国", datatype: "all" });
+  const response = await fetch(`/api/amap/v3/assistant/inputtips?${query.toString()}`);
+  const payload = await response.json() as { status?: string; info?: string; infocode?: string; tips?: Array<{ id?: string; name?: string; address?: string; district?: string; location?: string }> };
+  if (!response.ok || payload.status !== "1") return { candidates: [], error: `${payload.info ?? `HTTP ${response.status}`}${payload.infocode ? `（${payload.infocode}）` : ""}` };
+  return { candidates: (payload.tips ?? []).flatMap((tip) => { const coordinates = parseLocation(tip.location); return tip.id && tip.name && coordinates ? [{ poiId: tip.id, name: tip.name, address: tip.address ?? "", city: "", district: tip.district ?? "", ...coordinates }] : []; }) };
+}
 
 function RatingSelect({ name, label, required = false }: { name: string; label: string; required?: boolean }) {
   return <label>{label}<select name={name} required={required} defaultValue="">{!required && <option value="">不填写</option>}{required && <option value="" disabled>请选择</option>}{ratings.map((rating) => <option key={rating} value={rating}>{rating.toFixed(1)} 分</option>)}</select></label>;
@@ -28,21 +40,7 @@ export function MarkFlow({ apiKey, initialCandidate }: { apiKey?: string; initia
         if (currentRequest !== requestId.current) return;
         setResults(candidates); setSearchError(error); setHasSearched(true); setSearching(false);
       };
-      void loadAmap(apiKey, ["AMap.AutoComplete", "AMap.PlaceSearch"]).then((AMap) => {
-        const searchPlaces = () => {
-          const search = new AMap.PlaceSearch({ pageSize: 8, city: "全国", citylimit: false });
-          search.search(keyword.trim(), (status: string, result: { info?: string; infocode?: string; message?: string; poiList?: { pois?: Array<{ id?: string; name?: string; address?: string; cityname?: string; adname?: string; location?: { lng: number; lat: number } }> } }) => {
-            if (status !== "complete") { const reason = result.info ?? result.message ?? status; finish([], `高德搜索失败：${reason}${result.infocode ? `（${result.infocode}）` : ""}`); return; }
-            finish((result.poiList?.pois ?? []).flatMap((poi) => poi.id && poi.name && poi.location ? [{ poiId: poi.id, name: poi.name, address: poi.address ?? "", city: poi.cityname ?? "", district: poi.adname ?? "", latitude: poi.location.lat, longitude: poi.location.lng }] : []));
-          });
-        };
-        const autoComplete = new AMap.AutoComplete({ city: "全国" });
-        autoComplete.search(keyword.trim(), (status: string, result: { tips?: Array<{ id?: string; name?: string; address?: string; district?: string; location?: { lng: number; lat: number } }> }) => {
-          if (status !== "complete") { searchPlaces(); return; }
-          const candidates = (result.tips ?? []).flatMap((tip) => tip.id && tip.name && tip.location ? [{ poiId: tip.id, name: tip.name, address: tip.address ?? "", city: "", district: tip.district ?? "", latitude: tip.location.lat, longitude: tip.location.lng }] : []);
-          if (candidates.length) finish(candidates); else searchPlaces();
-        });
-      }).catch(() => { finish([], "高德搜索服务加载失败。请检查 Key、域名白名单和网络设置。"); });
+      void searchAmapTips(keyword.trim(), apiKey).then(({ candidates, error }) => finish(candidates, error ? `高德搜索失败：${error}` : "")).catch(() => finish([], "高德搜索服务暂时无法连接。"));
     }, 420);
     return () => window.clearTimeout(timer);
   }, [apiKey, keyword, selected]);
