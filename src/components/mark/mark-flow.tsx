@@ -2,12 +2,22 @@
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { lookupAmapPoi, savePlaceMark, searchAmapPoiTips, type MarkResult } from "@/app/mark/actions";
+import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/actions";
+import { createClient } from "@/lib/supabase/client";
 
 export type MarkCandidate = { poiId: string; name: string; address: string; city: string; district: string; latitude: number; longitude: number };
 const initial: MarkResult = {};
 const categoryOptions = [["restaurant", "餐厅"], ["cafe", "咖啡馆"], ["drinks", "茶饮/饮品"], ["bar", "酒吧/Pub"], ["bakery_dessert", "烘焙/甜品"], ["street_food", "小吃/街头餐饮"], ["other_food_drink", "其他餐饮"]] as const;
 const ratings = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+async function searchAmapTips(keyword: string): Promise<{ candidates: MarkCandidate[]; error?: string }> {
+  const supabase = createClient();
+  const { data, error } = await supabase.functions.invoke("amap-poi-search", { body: { keyword } });
+  if (error) return { candidates: [], error: "地点搜索服务暂时无法连接。" };
+  const payload = data as { candidates?: MarkCandidate[]; error?: string; errorCode?: string } | null;
+  if (payload?.error) return { candidates: [], error: `${payload.error}${payload.errorCode ? `（${payload.errorCode}）` : ""}` };
+  return { candidates: payload?.candidates ?? [] };
+}
 
 function RatingSelect({ name, label, required = false }: { name: string; label: string; required?: boolean }) {
   return <label>{label}<select name={name} required={required} defaultValue="">{!required && <option value="">不填写</option>}{required && <option value="" disabled>请选择</option>}{ratings.map((rating) => <option key={rating} value={rating}>{rating.toFixed(1)} 分</option>)}</select></label>;
@@ -27,7 +37,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
         if (currentRequest !== requestId.current) return;
         setResults(candidates); setSearchError(error); setHasSearched(true); setSearching(false);
       };
-      void searchAmapPoiTips(keyword.trim()).then(({ candidates, error }) => finish(candidates as MarkCandidate[], error ? `高德搜索失败：${error}` : "")).catch(() => finish([], "高德搜索服务暂时无法连接。"));
+      void searchAmapTips(keyword.trim()).then(({ candidates, error }) => finish(candidates, error ? `高德搜索失败：${error}` : "")).catch(() => finish([], "高德搜索服务暂时无法连接。"));
     }, 420);
     return () => window.clearTimeout(timer);
   }, [keyword, selected]);
