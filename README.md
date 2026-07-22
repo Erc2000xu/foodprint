@@ -1,6 +1,8 @@
 # 食迹 Foodprint
 
-由朋友共同维护、只收录真实体验和真实推荐的餐饮地点地图。当前仓库处于 **Phase 0**：项目骨架、设计基线、质量工具和供应商适配器边界已经建立；尚未接入登录、数据库、高德地图、照片上传或任何真实业务数据。
+由朋友共同维护、只收录真实体验和真实推荐的餐饮地点地图。
+
+当前 MVP 已具备：邮箱注册/登录、共同小组与邀请链接、成员管理、高德地点搜索、真实体验标记、共同地图标点、地点详情与朋友评价。界面以 iPhone Air 宽度（420px）为优先移动端基线。
 
 ## 技术基线
 
@@ -38,7 +40,7 @@ npm run build
 | `NEXT_PUBLIC_MAP_PROVIDER` | 当前固定为 `amap` | 浏览器可见 |
 | `NEXT_PUBLIC_AMAP_KEY` | 高德 Web JS Key | 浏览器可见，须绑定域名 |
 | `AMAP_SECURITY_KEY` | 高德 JS 安全密钥 | 仅服务端 |
-| `AMAP_WEBSERVICE_KEY` | 高德 Web 服务 Key，用于地点搜索 | 仅服务端，不设 `NEXT_PUBLIC_` |
+| `AMAP_WEBSERVICE_KEY` | 高德 Web 服务 Key，用于地点搜索 | 只保存于 Supabase Edge Function Secret；不设 `NEXT_PUBLIC_` |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 项目 URL | 浏览器可见 |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase Publishable Key | 浏览器可见 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 仅用于受控服务端任务 | 仅服务端 |
@@ -58,12 +60,12 @@ npm run build
 
 业务功能将在后续阶段依赖这些接口，不能直接在页面和组件中散落调用 Supabase、高德或存储服务。这样可在未来以腾讯云 COS、国内认证和其他地图适配器替换底层实现，而不重写业务组件。
 
-## 下一阶段（Phase 1）前置条件
+## 当前部署要点
 
-1. 在 Supabase 项目中准备好本地及 Vercel 私密环境变量；不在控制台手工建表或写 RLS。
-2. 在私密环境中设置已确认的 Owner 邮箱；初始小组为“食迹 Foodprint”、slug 为 `foodprint`。
-3. 确认 Phase 1 的 bootstrap 方式：通过受控脚本创建首个 Owner，而不是开启开放注册或手工篡改数据。
-4. 正式邮件邀请前配置自有 SMTP 与已验证的生产域名。
+1. 在 Vercel 配置 Supabase 公共变量及高德 JS Key / JS 安全密钥；不要把高德 Web 服务 Key 放到 Vercel 或浏览器。
+2. 在 Supabase Edge Function Secrets 中配置 `AMAP_WEBSERVICE_KEY`，然后部署 `amap-poi-search`。地点搜索经该函数调用高德，避免公开 Web 服务 Key。
+3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。执行 `supabase db push` 后再提交对应 migration。
+4. 首个 Owner 可由受控脚本初始化；邀请链接只由 Owner 生成。
 
 ## 数据库与回滚
 
