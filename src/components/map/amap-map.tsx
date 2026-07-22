@@ -39,6 +39,7 @@ export function AMapMap({ apiKey, places }: { apiKey?: string; places: MapPlace[
             anchor: "bottom-center",
             content: `<div class="foodprint-marker" aria-label="${place.name}，${place.averageRating.toFixed(1)} 分，${place.markCount} 人标记"><span>${place.averageRating.toFixed(1)}</span></div>`,
           });
+          marker.on("click", () => window.location.assign(`/place/${place.id}`));
           mapInstance.add(marker);
         });
       } catch {

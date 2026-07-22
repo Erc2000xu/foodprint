@@ -5,7 +5,7 @@ import Link from "next/link";
 import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/actions";
 import { loadAmap } from "@/lib/amap/load-amap";
 
-type Candidate = { poiId: string; name: string; address: string; city: string; district: string; latitude: number; longitude: number };
+export type MarkCandidate = { poiId: string; name: string; address: string; city: string; district: string; latitude: number; longitude: number };
 const initial: MarkResult = {};
 const categoryOptions = [["restaurant", "餐厅"], ["cafe", "咖啡馆"], ["drinks", "茶饮/饮品"], ["bar", "酒吧/Pub"], ["bakery_dessert", "烘焙/甜品"], ["street_food", "小吃/街头餐饮"], ["other_food_drink", "其他餐饮"]] as const;
 const ratings = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
@@ -14,9 +14,9 @@ function RatingSelect({ name, label, required = false }: { name: string; label: 
   return <label>{label}<select name={name} required={required} defaultValue="">{!required && <option value="">不填写</option>}{required && <option value="" disabled>请选择</option>}{ratings.map((rating) => <option key={rating} value={rating}>{rating.toFixed(1)} 分</option>)}</select></label>;
 }
 
-export function MarkFlow({ apiKey }: { apiKey?: string }) {
-  const [keyword, setKeyword] = useState(""); const [results, setResults] = useState<Candidate[]>([]); const [searching, setSearching] = useState(false);
-  const [selected, setSelected] = useState<Candidate>(); const [alreadyInGroup, setAlreadyInGroup] = useState(false); const [selectionError, setSelectionError] = useState("");
+export function MarkFlow({ apiKey, initialCandidate }: { apiKey?: string; initialCandidate?: MarkCandidate }) {
+  const [keyword, setKeyword] = useState(""); const [results, setResults] = useState<MarkCandidate[]>([]); const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<MarkCandidate | undefined>(initialCandidate); const [alreadyInGroup, setAlreadyInGroup] = useState(Boolean(initialCandidate)); const [selectionError, setSelectionError] = useState("");
   const [isLookingUp, startLookup] = useTransition(); const requestId = useRef(0); const [state, action, pending] = useActionState(savePlaceMark, initial);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export function MarkFlow({ apiKey }: { apiKey?: string }) {
     return () => window.clearTimeout(timer);
   }, [apiKey, keyword, selected]);
 
-  const choose = (candidate: Candidate) => {
+  const choose = (candidate: MarkCandidate) => {
     setSelectionError("");
     startLookup(async () => {
       const lookup = await lookupAmapPoi(candidate.poiId);
