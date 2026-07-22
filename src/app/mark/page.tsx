@@ -16,5 +16,5 @@ export default async function MarkPage({ searchParams }: { searchParams: Promise
       if (place?.source_poi_id) initialCandidate = { poiId: place.source_poi_id, name: place.name, address: place.address ?? "", city: place.city ?? "", district: place.district ?? "", latitude: Number(place.latitude), longitude: Number(place.longitude) };
     }
   }
-  return <AppShell activeNav="标记"><main className="mark-page"><MarkFlow apiKey={process.env.NEXT_PUBLIC_AMAP_KEY} initialCandidate={initialCandidate} /></main></AppShell>;
+  return <AppShell activeNav="标记"><main className="mark-page"><MarkFlow initialCandidate={initialCandidate} /></main></AppShell>;
 }

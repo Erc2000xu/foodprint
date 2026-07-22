@@ -38,6 +38,7 @@ npm run build
 | `NEXT_PUBLIC_MAP_PROVIDER` | 当前固定为 `amap` | 浏览器可见 |
 | `NEXT_PUBLIC_AMAP_KEY` | 高德 Web JS Key | 浏览器可见，须绑定域名 |
 | `AMAP_SECURITY_KEY` | 高德 JS 安全密钥 | 仅服务端 |
+| `AMAP_WEBSERVICE_KEY` | 高德 Web 服务 Key，用于地点搜索 | 仅服务端，不设 `NEXT_PUBLIC_` |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 项目 URL | 浏览器可见 |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase Publishable Key | 浏览器可见 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 仅用于受控服务端任务 | 仅服务端 |
