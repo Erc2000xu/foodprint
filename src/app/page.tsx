@@ -1,8 +1,15 @@
 import { AppShell } from "@/components/shell/app-shell";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 const quickFilters = ["附近", "咖啡馆", "约会", "环境 4+ "];
 
-export default function Home() {
+export default async function Home() {
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
+    const supabase = await createClient();
+    const result = await supabase.auth.getClaims();
+    if (!result.data?.claims) redirect("/login");
+  }
   return (
     <AppShell>
       <section className="map-stage" aria-label="地图功能开发占位区">

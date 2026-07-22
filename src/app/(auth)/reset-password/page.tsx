@@ -1,0 +1,2 @@
+import { updatePassword } from "../actions";
+export default async function ResetPassword({ searchParams }: { searchParams: Promise<{ error?: string }> }) { const p = await searchParams; return <main className="auth-page"><section className="auth-card"><p className="eyebrow">设置新密码</p><h1>更新密码</h1>{p.error && <p className="form-error">{p.error}</p>}<form action={updatePassword}><label>新密码<input name="password" type="password" required minLength={8} autoComplete="new-password" /></label><button className="primary-button">保存新密码</button></form></section></main>; }

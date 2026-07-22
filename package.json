@@ -9,9 +9,12 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bootstrap:owner": "node --env-file=.env.local scripts/bootstrap-owner.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "0.12.3",
+    "@supabase/supabase-js": "2.110.8",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
