@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { InviteForm } from "@/components/admin/invite-form";
 import { InvitationList, type InvitationSummary } from "@/components/admin/invitation-list";
 import { MemberStatusButton } from "@/components/admin/member-status-button";
+import { AppShell } from "@/components/shell/app-shell";
 import { createClient } from "@/lib/supabase/server";
 
 type InvitationRow = {
@@ -36,5 +37,5 @@ export default async function AdminPage() {
     status: invitation.status,
   }));
 
-  return <main className="admin-page"><header><p className="eyebrow">{group?.name}</p><h1>我的与成员管理</h1><p>当前角色：{membership.role === "owner" ? "Owner" : membership.role === "admin" ? "Admin" : "成员"}</p></header>{isManager && group && <><section className="admin-card"><h2>邀请朋友</h2><p>新成员会先验证邮箱，再通过邀请链接加入共同地图。</p><InviteForm groupId={group.id} /></section><section className="admin-card"><h2>邀请记录</h2><p>为保护隐私，原始邀请链接只在生成时显示一次；这里仅显示状态和使用情况。</p><InvitationList invitations={invitationSummaries} /></section></>}<section className="admin-card"><h2>成员</h2><ul className="member-list">{members?.map((member) => { const profile = member.profiles as { display_name?: string } | null; const manageable = isManager && member.role === "member" && (member.status === "active" || member.status === "suspended"); return <li key={member.user_id}><span className="member-avatar">{profile?.display_name?.slice(0, 1) ?? "食"}</span><span className="member-list__identity"><strong>{profile?.display_name ?? "成员"}</strong><small>{member.role} · {member.status}</small></span>{manageable && <MemberStatusButton groupId={membership.group_id} userId={member.user_id} status={member.status} />}</li>; })}</ul></section></main>;
+  return <AppShell activeNav="我的"><section className="admin-page"><header><p className="eyebrow">{group?.name}</p><h1>我的与成员管理</h1><p>当前角色：{membership.role === "owner" ? "Owner" : membership.role === "admin" ? "Admin" : "成员"}</p></header>{isManager && group && <><section className="admin-card"><h2>邀请朋友</h2><p>新成员会先验证邮箱，再通过邀请链接加入共同地图。</p><InviteForm groupId={group.id} /></section><section className="admin-card"><h2>邀请记录</h2><p>为保护隐私，原始邀请链接只在生成时显示一次；这里仅显示状态和使用情况。</p><InvitationList invitations={invitationSummaries} /></section></>}<section className="admin-card"><h2>成员</h2><ul className="member-list">{members?.map((member) => { const profile = member.profiles as { display_name?: string } | null; const manageable = isManager && member.role === "member" && (member.status === "active" || member.status === "suspended"); return <li key={member.user_id}><span className="member-avatar">{profile?.display_name?.slice(0, 1) ?? "食"}</span><span className="member-list__identity"><strong>{profile?.display_name ?? "成员"}</strong><small>{member.role} · {member.status}</small></span>{manageable && <MemberStatusButton groupId={membership.group_id} userId={member.user_id} status={member.status} />}</li>; })}</ul></section></section></AppShell>;
 }
