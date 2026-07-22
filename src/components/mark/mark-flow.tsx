@@ -13,7 +13,14 @@ const ratings = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
 async function searchAmapTips(keyword: string): Promise<{ candidates: MarkCandidate[]; error?: string }> {
   const supabase = createClient();
   const { data, error } = await supabase.functions.invoke("amap-poi-search", { body: { keyword } });
-  if (error) return { candidates: [], error: "地点搜索服务暂时无法连接。" };
+  if (error) {
+    const context = error.context;
+    if (context instanceof Response) {
+      const payload = await context.json().catch(() => null) as { error?: string; errorCode?: string } | null;
+      if (payload?.error) return { candidates: [], error: `${payload.error}${payload.errorCode ? `（${payload.errorCode}）` : ""}` };
+    }
+    return { candidates: [], error: "地点搜索服务暂时无法连接。" };
+  }
   const payload = data as { candidates?: MarkCandidate[]; error?: string; errorCode?: string } | null;
   if (payload?.error) return { candidates: [], error: `${payload.error}${payload.errorCode ? `（${payload.errorCode}）` : ""}` };
   return { candidates: payload?.candidates ?? [] };
