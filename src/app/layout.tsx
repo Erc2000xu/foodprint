@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from "next";
+import { PwaRegister } from "@/components/pwa/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "食迹 Foodprint",
   description: "由朋友共同维护的真实餐饮体验地图",
+  applicationName: "食迹 Foodprint",
+  appleWebApp: { capable: true, title: "食迹", statusBarStyle: "default" },
+  icons: { apple: [{ url: "/icons/180", sizes: "180x180", type: "image/png" }] },
 };
 
 export const viewport: Viewport = {
@@ -20,7 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>{children}<PwaRegister buildId={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} /></body>
     </html>
   );
 }

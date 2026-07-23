@@ -1,0 +1,7 @@
+export const dynamic = "force-dynamic";
+
+export function GET(request: Request) {
+  const build = new URL(request.url).searchParams.get("v")?.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || "current";
+  const script = `const CACHE="foodprint-shell-${build}";const SHELL=["/offline","/manifest.webmanifest","/icons/180","/icons/192","/icons/512"];self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)))});self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith("foodprint-shell-")&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()))});self.addEventListener("message",e=>{if(e.data==="SKIP_WAITING")self.skipWaiting()});self.addEventListener("fetch",e=>{const r=e.request,u=new URL(r.url);if(r.method!=="GET"||u.origin!==self.location.origin)return;if(r.mode==="navigate"){e.respondWith(fetch(r).catch(()=>caches.match("/offline")));return}const cacheable=u.pathname.startsWith("/_next/static/")||u.pathname==="/manifest.webmanifest"||u.pathname.startsWith("/icons/");if(!cacheable)return;e.respondWith(caches.match(r).then(cached=>cached||fetch(r).then(response=>{if(response.ok)caches.open(CACHE).then(c=>c.put(r,response.clone()));return response})))})`;
+  return new Response(script, { headers: { "Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-store, max-age=0" } });
+}

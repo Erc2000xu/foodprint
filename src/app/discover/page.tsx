@@ -27,7 +27,7 @@ export default async function DiscoverPage({ searchParams }: { searchParams: Pro
   const groupId = memberships?.[0]?.group_id;
   if (!groupId) redirect("/admin");
 
-  const { data: groupPlaces } = await supabase.from("group_places").select("id, place_id, primary_category").eq("group_id", groupId).eq("status", "active").order("created_at", { ascending: false });
+  const { data: groupPlaces } = await supabase.from("group_places").select("id, place_id, primary_category").eq("group_id", groupId).eq("status", "active").order("created_at", { ascending: false }).limit(30);
   const ids = groupPlaces?.map((place) => place.id) ?? [];
   const placeIds = groupPlaces?.map((place) => place.place_id) ?? [];
   const [{ data: places }, { data: stats }, { data: wishlist }, { data: marks }] = await Promise.all([

@@ -2,7 +2,7 @@
 
 由朋友共同维护、只收录真实体验和真实推荐的餐饮地点地图。
 
-当前 MVP 已具备：邮箱注册/登录、共同小组与邀请链接、成员管理、高德地点搜索、真实体验标记、共同地图标点、地点详情与朋友评价。界面以 iPhone Air 宽度（420px）为优先移动端基线。
+当前 MVP 已具备：邀请制邮箱注册/登录、共同小组与成员管理、高德地点搜索、真实体验标记、共同地图与列表、想去、组合筛选、私有照片画廊、PWA 安装、离线壳和数据导出。界面以 iPhone Air 宽度（420px）为优先移动端基线。
 
 ## 技术基线
 
@@ -64,9 +64,11 @@ npm run build
 
 1. 在 Vercel 配置 Supabase 公共变量及高德 JS Key / JS 安全密钥；不要把高德 Web 服务 Key 放到 Vercel 或浏览器。
 2. 在 Supabase Edge Function Secrets 中配置 `AMAP_WEBSERVICE_KEY`，然后部署 `amap-poi-search`。地点搜索经该函数调用高德，避免公开 Web 服务 Key。
-3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。执行 `supabase db push` 后再提交对应 migration。
+3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。执行 `supabase db push` 后再提交对应 migration；Docker 的本地 migration-cache 警告不代表远程迁移失败。
 4. 首个 Owner 可由受控脚本初始化；邀请链接只由 Owner 生成。
+5. PWA 不需要额外密钥：生产环境会自动注册 `/service-worker.js`。图标、manifest、离线页和安装引导已经内置。
+6. Owner 的全量 JSON 导出需要 Vercel Production 中的 `SUPABASE_SERVICE_ROLE_KEY`；该 key 不会发送到浏览器。
 
 ## 数据库与回滚
 
-Phase 0 尚未包含 migration 或 seed，因此没有待执行的数据库变更。Phase 1 起所有 schema、RLS、RPC、seed 与回滚说明都将随 migration 提交；禁止依赖控制台手工修改。
+所有 schema、RLS、RPC 与审计规则均位于 `supabase/migrations/`，按文件名时间顺序执行。生产恢复、导出内容、PWA 缓存边界与 Vercel 回滚步骤见 [docs/OPERATIONS.md](docs/OPERATIONS.md)。
