@@ -50,7 +50,13 @@ Deno.serve(async (request) => {
     const groupId = memberships?.[0]?.group_id;
     if (!groupId) return json({ error: "你尚未加入可用的共同地图。" }, 403, origin);
 
-    const { data: groupPlaces, error: groupPlaceError } = await supabase.from("group_places").select("id, place_id").eq("group_id", groupId).eq("status", "active").limit(12);
+    const body = await request.json().catch(() => ({})) as { groupPlaceIds?: unknown };
+    const requestedGroupPlaceIds = Array.isArray(body.groupPlaceIds)
+      ? [...new Set(body.groupPlaceIds.filter((value): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value)).slice(0, 12))]
+      : [];
+    let groupPlaceQuery = supabase.from("group_places").select("id, place_id").eq("group_id", groupId).eq("status", "active").limit(12);
+    if (requestedGroupPlaceIds.length) groupPlaceQuery = groupPlaceQuery.in("id", requestedGroupPlaceIds);
+    const { data: groupPlaces, error: groupPlaceError } = await groupPlaceQuery;
     if (groupPlaceError) throw groupPlaceError;
     const placeIds = groupPlaces?.map((place) => place.place_id) ?? [];
     if (!placeIds.length) return json({ error: "共同地图还没有地点。" }, 404, origin);

@@ -13,7 +13,7 @@ export function StaticAmapMap({ places }: { places: MapPlace[] }) {
     let cancelled = false;
     const load = async () => {
       const supabase = createClient();
-      const { data, error: functionError } = await supabase.functions.invoke("amap-static-map", { body: {} });
+      const { data, error: functionError } = await supabase.functions.invoke("amap-static-map", { body: { groupPlaceIds: places.map((place) => place.id) } });
       if (cancelled) return;
       if (functionError || !(data instanceof Blob)) {
         setError("地图图片暂时无法生成，请使用列表浏览地点。");
@@ -24,7 +24,7 @@ export function StaticAmapMap({ places }: { places: MapPlace[] }) {
     };
     void load();
     return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [places.length]);
+  }, [places]);
 
   if (error) return <div className="map-fallback map-fallback--error"><strong>地图暂时不可用</strong><span>{error}</span></div>;
   if (!imageUrl) return <div className="map-fallback"><strong>正在生成真实地图…</strong><span>正在从高德地图服务获取共同地点底图。</span></div>;
