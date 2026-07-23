@@ -13,12 +13,27 @@ export function StaticAmapMap({ places }: { places: MapPlace[] }) {
     let cancelled = false;
     const load = async () => {
       const supabase = createClient();
-      const { data, error: functionError } = await supabase.functions.invoke("amap-static-map", { body: { groupPlaceIds: places.map((place) => place.id) } });
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        if (!cancelled) setError("登录状态已失效，请重新登录后查看地图。");
+        return;
+      }
+      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/amap-static-map`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${session.access_token}`,
+          apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ groupPlaceIds: places.map((place) => place.id) }),
+      });
       if (cancelled) return;
-      if (functionError || !(data instanceof Blob)) {
+      if (!response.ok || !response.headers.get("content-type")?.startsWith("image/")) {
         setError("地图图片暂时无法生成，请使用列表浏览地点。");
         return;
       }
+      const data = await response.blob();
+      if (cancelled) return;
       objectUrl = URL.createObjectURL(data);
       setImageUrl(objectUrl);
     };
