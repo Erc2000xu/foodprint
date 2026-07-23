@@ -44,7 +44,7 @@ export default async function Home() {
   }
   return (
     <AppShell>
-      <MapBrowser apiKey={process.env.NEXT_PUBLIC_AMAP_KEY} places={places} />
+      <MapBrowser places={places} />
 
       <section className="place-sheet" aria-labelledby="welcome-title">
         <div className="sheet-handle" aria-hidden="true" />

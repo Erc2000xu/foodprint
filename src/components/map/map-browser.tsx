@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { AMapMap, type MapPlace } from "@/components/map/amap-map";
+import type { MapPlace } from "@/components/map/amap-map";
+import { StaticAmapMap } from "@/components/map/static-amap-map";
 import { categoryOptions } from "@/lib/mark-options";
 
 const categoryLabels = Object.fromEntries(categoryOptions) as Record<string, string>;
 
-export function MapBrowser({ apiKey, places }: { apiKey?: string; places: MapPlace[] }) {
+export function MapBrowser({ places }: { places: MapPlace[] }) {
   const [mode, setMode] = useState<"map" | "list">("map");
   const [filter, setFilter] = useState<"all" | "coffee" | "date" | "rating">("all");
   const visiblePlaces = useMemo(() => places.filter((place) => {
@@ -18,7 +19,7 @@ export function MapBrowser({ apiKey, places }: { apiKey?: string; places: MapPla
   }), [filter, places]);
 
   return <section className="map-stage" aria-label="共同地图">
-    {mode === "map" ? <AMapMap apiKey={apiKey} places={visiblePlaces} /> : <div className="map-list-panel">{visiblePlaces.length ? <ul>{visiblePlaces.map((place) => <li key={place.id}><Link href={`/place/${place.id}`}><div><strong>{place.name}</strong><span>{categoryLabels[place.category] ?? "餐饮"}</span></div><div className="map-list-score"><b>{place.averageRating.toFixed(1)}</b><small>{place.markCount} 人标记</small></div></Link></li>)}</ul> : <p>当前筛选下还没有地点。</p>}</div>}
+    {mode === "map" ? <StaticAmapMap places={visiblePlaces} /> : <div className="map-list-panel">{visiblePlaces.length ? <ul>{visiblePlaces.map((place) => <li key={place.id}><Link href={`/place/${place.id}`}><div><strong>{place.name}</strong><span>{categoryLabels[place.category] ?? "餐饮"}</span></div><div className="map-list-score"><b>{place.averageRating.toFixed(1)}</b><small>{place.markCount} 人标记</small></div></Link></li>)}</ul> : <p>当前筛选下还没有地点。</p>}</div>}
 
     <div className="map-toolbar">
       <Link className="search-trigger" href="/discover"><span aria-hidden="true">⌕</span>搜索朋友推荐的地方</Link>
