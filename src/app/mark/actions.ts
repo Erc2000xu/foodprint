@@ -22,7 +22,7 @@ async function getActiveGroupId() {
   if (!user) return { supabase, error: "请先登录。" as const };
   const { data: memberships } = await supabase.from("group_members").select("group_id").eq("user_id", user.id).eq("status", "active").limit(1);
   const groupId = memberships?.[0]?.group_id;
-  return groupId ? { supabase, groupId } : { supabase, error: "你尚未加入共同地图。" as const };
+  return groupId ? { supabase, groupId, userId: user.id } : { supabase, error: "你尚未加入共同地图。" as const };
 }
 
 export async function searchAmapPoiTips(keyword: string): Promise<PoiSearchResult> {
@@ -97,6 +97,31 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     p_scene_tag_slugs: value.scene_tags,
   });
   if (sceneTagError) return { error: `真实标记已保存，但场景标签暂未保存：${sceneTagError.message}` };
+  const photos = formData.getAll("photos").filter((value): value is File => value instanceof File && value.size > 0);
+  const photoDimensions = formData.getAll("photo_dimensions").map((value) => typeof value === "string" ? /^([1-9]\d{0,4})x([1-9]\d{0,4})$/.exec(value) : null);
+  if (photos.length > 9) return { error: "真实标记已保存，但单次最多上传 9 张照片。" };
+  if (photos.length) {
+    const { count, error: countError } = await activeGroup.supabase.from("photos").select("id", { count: "exact", head: true }).eq("place_mark_id", data[0].mark_id).is("deleted_at", null);
+    if (countError) return { error: `真实标记已保存，但无法读取已有照片：${countError.message}` };
+    if ((count ?? 0) + photos.length > 9) return { error: `真实标记已保存；该条标记已有 ${count ?? 0} 张照片，最多保留 9 张。` };
+  }
+  for (const [sortOrder, photo] of photos.entries()) {
+    if (photo.type !== "image/webp" || photo.size > 1_572_864) return { error: "真实标记已保存，但照片格式或大小不符合要求。" };
+    const dimensions = photoDimensions[sortOrder];
+    const width = dimensions ? Number(dimensions[1]) : null;
+    const height = dimensions ? Number(dimensions[2]) : null;
+    const objectKey = `groups/${activeGroup.groupId}/users/${activeGroup.userId}/marks/${data[0].mark_id}/${crypto.randomUUID()}.webp`;
+    const { error: uploadError } = await activeGroup.supabase.storage.from("place-photos").upload(objectKey, photo, { contentType: "image/webp", upsert: false });
+    if (uploadError) return { error: `真实标记已保存，但第 ${sortOrder + 1} 张照片上传失败：${uploadError.message}` };
+    const { error: photoError } = await activeGroup.supabase.from("photos").insert({
+      group_id: activeGroup.groupId, group_place_id: data[0].group_place_id, user_id: activeGroup.userId,
+      place_mark_id: data[0].mark_id, storage_provider: "supabase", object_key: objectKey, width, height, size_bytes: photo.size, sort_order: sortOrder,
+    });
+    if (photoError) {
+      await activeGroup.supabase.storage.from("place-photos").remove([objectKey]);
+      return { error: `真实标记已保存，但第 ${sortOrder + 1} 张照片登记失败：${photoError.message}` };
+    }
+  }
   revalidatePath("/");
   revalidatePath("/discover");
   revalidatePath(`/place/${data[0].group_place_id}`);

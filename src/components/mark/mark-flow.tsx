@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import Link from "next/link";
 import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/actions";
 import { categoryOptions, qualityLabels, sceneTags, type PlaceCategory } from "@/lib/mark-options";
+import { PhotoPicker } from "@/components/mark/photo-picker";
 import { createClient } from "@/lib/supabase/client";
 
 export type MarkCandidate = {
@@ -188,6 +189,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       <label>人均消费（元） <span className="optional-mark">可选</span><input name="price_per_person" type="number" min="0" step="1" inputMode="decimal" /></label>
       <label>推荐菜 / 饮品 <span className="optional-mark">可选</span><input name="recommended_items" maxLength={400} placeholder="用逗号分隔，例如：手冲咖啡，巴斯克" /></label>
       <label>一句体验 <span className="optional-mark">可选</span><input name="short_review" maxLength={1000} placeholder="想留下的真实感受" /></label>
+      <PhotoPicker />
       {state.error && <p className="form-error">{state.error}</p>}
       <button className="primary-button" disabled={pending}>{pending ? "正在保存…" : "保存真实标记"}</button>
     </form>
