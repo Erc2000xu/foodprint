@@ -16,16 +16,20 @@ async function compressPhoto(file: File): Promise<PreparedPhoto> {
       element.src = sourceUrl;
     });
     const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width; canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("当前浏览器无法处理图片");
-    context.drawImage(image, 0, 0, width, height);
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.8));
-    if (!blob || blob.size > 1_572_864) throw new Error("压缩后的图片仍超过 1.5MB");
-    return { file: new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "photo"}.webp`, { type: "image/webp" }), width, height };
+    let width = Math.max(1, Math.round(image.naturalWidth * scale));
+    let height = Math.max(1, Math.round(image.naturalHeight * scale));
+    for (const quality of [0.8, 0.72, 0.64, 0.56]) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("当前浏览器无法处理图片");
+      context.drawImage(image, 0, 0, width, height);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+      if (blob && blob.size <= 1_572_864) return { file: new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "photo"}.webp`, { type: "image/webp" }), width, height };
+      width = Math.max(1, Math.round(width * 0.82));
+      height = Math.max(1, Math.round(height * 0.82));
+    }
+    throw new Error("压缩后的图片仍超过 1.5MB，请换一张照片后重试。");
   } finally { URL.revokeObjectURL(sourceUrl); }
 }
 
