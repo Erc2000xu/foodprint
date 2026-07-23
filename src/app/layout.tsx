@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "由朋友共同维护的真实餐饮体验地图",
   applicationName: "食迹 Foodprint",
   appleWebApp: { capable: true, title: "食迹", statusBarStyle: "default" },
-  icons: { apple: [{ url: "/icons/180", sizes: "180x180", type: "image/png" }] },
+  icons: { apple: [{ url: "/mascot/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] },
 };
 
 export const viewport: Viewport = {

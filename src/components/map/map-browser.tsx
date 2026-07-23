@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import type { MapPlace } from "@/components/map/amap-map";
 import { StaticAmapMap } from "@/components/map/static-amap-map";
@@ -28,6 +29,6 @@ export function MapBrowser({ places }: { places: MapPlace[] }) {
     <div className="filter-row" aria-label="地点筛选">
       {[["all", "全部"], ["coffee", "咖啡馆"], ["date", "约会"], ["rating", "评分 4+"]].map(([value, label]) => <button className={filter === value ? "filter-chip filter-chip--active" : "filter-chip"} key={value} type="button" onClick={() => setFilter(value as typeof filter)}>{label}</button>)}
     </div>
-    {!places.length && <div className="map-placeholder" role="status"><span className="map-placeholder__pin" aria-hidden="true">✦</span><p>共同地图还没有真实标记</p><small>点击下方「标记」，添加一次真实体验后，这里就会出现地点。</small></div>}
+    {!places.length && <div className="map-placeholder" role="status"><Image className="map-placeholder__mascot" src="/mascot/empty-map.jpg" width={160} height={160} alt="" /><p>共同地图还没有真实标记</p><small>点击下方「标记」，添加一次真实体验后，这里就会出现地点。</small></div>}
   </section>;
 }

@@ -2,6 +2,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { MapBrowser } from "@/components/map/map-browser";
 import type { MapPlace } from "@/components/map/amap-map";
 import { createClient } from "@/lib/supabase/server";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 
 export default async function Home() {
@@ -54,7 +55,7 @@ export default async function Home() {
           食迹只收录朋友真实体验过、愿意推荐的餐饮地点。每一处新地点，都从一条真实标记开始。
         </p>
         <div className="welcome-card">
-          <div className="mascot-mark" aria-hidden="true">FP</div>
+          <Image className="welcome-mascot" src="/mascot/welcome.jpg" width={130} height={160} alt="" priority />
           <div>
             <strong>从一次真实体验开始</strong>
             <span>新地点必须和首条推荐标记一起创建。</span>

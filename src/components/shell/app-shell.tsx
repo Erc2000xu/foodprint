@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 const navigation = [
@@ -14,7 +15,7 @@ export function AppShell({ children, activeNav = "地图" }: { children: ReactNo
     <div className="app-shell">
       <header className="app-header">
         <Link className="brand" href="/" aria-label="食迹 Foodprint 首页">
-          <span className="brand__badge" aria-hidden="true">FP</span>
+          <Image className="brand__badge" src="/mascot/icon-192.png" width={34} height={34} alt="" priority />
           <span className="brand__name">食迹</span>
         </Link>
         <button className="group-status" type="button" aria-label="当前共同地图：食迹 Foodprint">
