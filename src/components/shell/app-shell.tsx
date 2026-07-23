@@ -3,11 +3,11 @@ import Image from "next/image";
 import Link from "next/link";
 
 const navigation = [
-  { label: "地图", icon: "⌖", href: "/" },
-  { label: "发现", icon: "◫", href: "/discover" },
-  { label: "标记", icon: "+", href: "/mark", add: true },
-  { label: "动态", icon: "◌", href: "/activity" },
-  { label: "我的", icon: "◉", href: "/admin" },
+  { label: "地图", icon: "/nav-icons/map.png", href: "/" },
+  { label: "发现", icon: "/nav-icons/discover.png", href: "/discover" },
+  { label: "标记", icon: "/nav-icons/mark.png", href: "/mark", add: true },
+  { label: "动态", icon: "/nav-icons/activity.png", href: "/activity" },
+  { label: "我的", icon: "/nav-icons/profile.png", href: "/admin" },
 ];
 
 export function AppShell({ children, activeNav = "地图" }: { children: ReactNode; activeNav?: string }) {
@@ -32,7 +32,7 @@ export function AppShell({ children, activeNav = "地图" }: { children: ReactNo
             href={href}
             key={label}
           >
-            <span className="nav-item__icon" aria-hidden="true">{icon}</span>
+            <Image className="nav-item__icon" src={icon} width={40} height={40} alt="" />
             <span>{label}</span>
           </Link>
         ))}
