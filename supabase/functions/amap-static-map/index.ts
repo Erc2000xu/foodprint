@@ -52,7 +52,7 @@ Deno.serve(async (request) => {
 
     const body = await request.json().catch(() => ({})) as { groupPlaceIds?: unknown };
     const requestedGroupPlaceIds = Array.isArray(body.groupPlaceIds)
-      ? [...new Set(body.groupPlaceIds.filter((value): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value)).slice(0, 12))]
+      ? [...new Set(body.groupPlaceIds.filter((value): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f-]{28}$/i.test(value)).slice(0, 12))]
       : [];
     let groupPlaceQuery = supabase.from("group_places").select("id, place_id").eq("group_id", groupId).eq("status", "active").limit(12);
     if (requestedGroupPlaceIds.length) groupPlaceQuery = groupPlaceQuery.in("id", requestedGroupPlaceIds);
