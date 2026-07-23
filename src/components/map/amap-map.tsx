@@ -31,7 +31,12 @@ export function AMapMap({ apiKey, places }: { apiKey?: string; places: MapPlace[
         const AMap = await loadAmap(apiKey, ["AMap.Scale"]);
         if (destroyed || !containerRef.current) return;
         const center = places[0] ? [places[0].longitude, places[0].latitude] : defaultCenter;
-        const mapInstance = new AMap.Map(containerRef.current, { center, zoom: places.length ? 13 : 11, viewMode: "2D", resizeEnable: true }) as AMapInstance;
+        const mapInstance = new AMap.Map(containerRef.current, {
+          center,
+          zoom: places.length ? 13 : 11,
+          viewMode: "2D",
+          resizeEnable: true,
+        }) as AMapInstance;
         map = mapInstance;
         mapInstance.addControl(new AMap.Scale());
         places.forEach((place) => {

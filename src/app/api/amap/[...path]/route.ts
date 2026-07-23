@@ -9,10 +9,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
   if (referrer && new URL(referrer).origin !== request.nextUrl.origin) return NextResponse.json({ message: "无效的地图来源。" }, { status: 403 });
 
   const { path } = await context.params;
-  const upstreamPath = path.join("/");
-  if (upstreamPath === "security") {
-    return NextResponse.json({ securityJsCode: process.env.AMAP_SECURITY_KEY }, { headers: { "cache-control": "no-store" } });
-  }
+  // `/_AMapService` is the fixed prefix required by the official JS API proxy
+  // configuration. It is intentionally not forwarded to AMap.
+  if (path[0] !== "_AMapService") return NextResponse.json({ message: "无效的地图请求。" }, { status: 400 });
+  const upstreamPath = path.slice(1).join("/");
   if (!upstreamPath || !/^[a-zA-Z0-9/_-]+$/.test(upstreamPath)) return NextResponse.json({ message: "无效的地图请求。" }, { status: 400 });
 
   const upstream = new URL(upstreamPath.startsWith("v4/map/styles") ? `${AMAP_WEB_API}/${upstreamPath}` : `${AMAP_REST_API}/${upstreamPath}`);
