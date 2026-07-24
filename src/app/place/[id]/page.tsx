@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { PhotoDeleteButton } from "@/components/place/photo-delete-button";
 import { AppShell } from "@/components/shell/app-shell";
+import { amapNavigationUrl, amapPlaceUrl } from "@/lib/amap/uri";
 import { categoryOptions, sceneTagLabels } from "@/lib/mark-options";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,7 +22,7 @@ export default async function PlaceDetail({ params, searchParams }: { params: Pr
   if (!groupPlace || groupPlace.status === "archived") notFound();
 
   const [{ data: place }, { data: stats }, { data: marks }, { data: photos }] = await Promise.all([
-    supabase.from("places").select("name, branch_name, address, city, district, phone").eq("id", groupPlace.place_id).maybeSingle(),
+    supabase.from("places").select("name, branch_name, address, city, district, phone, latitude, longitude").eq("id", groupPlace.place_id).maybeSingle(),
     supabase.from("group_place_stats").select("average_rating, mark_count, recommend_count").eq("group_place_id", groupPlace.id).maybeSingle(),
     supabase.from("place_marks").select("id, user_id, overall_rating, would_recommend, would_revisit, short_review, recommended_items, price_per_person, last_visited_on, updated_at, profiles(display_name)").eq("group_place_id", groupPlace.id).is("deleted_at", null).order("updated_at", { ascending: false }),
     supabase.from("photos").select("id, user_id, object_key, width, height, sort_order").eq("group_place_id", groupPlace.id).is("deleted_at", null).order("sort_order"),
@@ -43,11 +44,14 @@ export default async function PlaceDetail({ params, searchParams }: { params: Pr
   (markSceneTags ?? []).forEach((scene) => sceneTotals.set(scene.scene_tag_slug, (sceneTotals.get(scene.scene_tag_slug) ?? 0) + 1));
   const isMarkedByMe = marks?.some((mark) => mark.user_id === user.id) ?? false;
   const memberNames = (marks ?? []).map((mark) => (mark.profiles as Profile)?.display_name ?? "成员");
+  const amapTarget = { name: place.name, address: place.address, latitude: Number(place.latitude), longitude: Number(place.longitude) };
 
   return <AppShell><section className="place-detail">
     <Link className="back-button" href={safeReturnTo}>← 返回结果</Link>
     <p className="eyebrow">{categoryLabels[groupPlace.primary_category] ?? groupPlace.primary_category}</p><h1>{place.name}</h1>
     {place.branch_name && <p className="place-branch">{place.branch_name}</p>}<p className="place-address">{place.address || `${place.city ?? ""} ${place.district ?? ""}`}</p>
+    <div className="place-location-tags" aria-label="高德地点信息">{place.district && <span className="location-tag location-tag--district">行政区 · {place.district}</span>}<span className="location-tag location-tag--source">高德地点</span></div>
+    <div className="place-navigation"><a className="place-navigation__primary" href={amapNavigationUrl(amapTarget)} target="_blank" rel="noreferrer">去高德导航</a><a className="place-navigation__secondary" href={amapPlaceUrl(amapTarget)} target="_blank" rel="noreferrer">在高德地图查看</a></div><p className="place-navigation__hint">手机会优先唤起高德地图；未安装时将在网页地图中打开。</p>
     <div className="place-stats"><strong>{Number(stats?.average_rating ?? 0).toFixed(1)}</strong><span>小组均分</span><strong>{stats?.mark_count ?? 0}</strong><span>人真实标记</span><strong>{stats?.recommend_count ?? 0}</strong><span>人推荐</span></div>
     {memberNames.length > 0 && <div className="member-summary"><div className="member-avatar-stack" aria-label={`已由 ${memberNames.join("、")} 标记`}>{memberNames.slice(0, 4).map((name, index) => <span className="member-avatar" key={`${name}-${index}`}>{name.slice(0, 1)}</span>)}</div><span>{memberNames.length === 1 ? `${memberNames[0]} 的真实体验` : `${memberNames.length} 位朋友已留下体验`}</span></div>}
     {sceneTotals.size > 0 && <section className="scene-summary"><h2>大家觉得适合</h2><div>{[...sceneTotals.entries()].sort((left, right) => right[1] - left[1]).map(([slug, total]) => <span key={slug}>{sceneTagLabels[slug] ?? slug} · {total}</span>)}</div></section>}
