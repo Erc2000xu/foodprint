@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { PhotoDeleteButton } from "@/components/place/photo-delete-button";
 import { AppShell } from "@/components/shell/app-shell";
 import { amapNavigationUrl, amapPlaceUrl } from "@/lib/amap/uri";
+import { displayAmapAdministrativeLocation } from "@/lib/amap/location-display";
 import { categoryOptions, sceneTagLabels } from "@/lib/mark-options";
 import { createClient } from "@/lib/supabase/server";
 
@@ -50,7 +51,7 @@ export default async function PlaceDetail({ params, searchParams }: { params: Pr
     <Link className="back-button" href={safeReturnTo}>← 返回结果</Link>
     <p className="eyebrow">{categoryLabels[groupPlace.primary_category] ?? groupPlace.primary_category}</p><h1>{place.name}</h1>
     {place.branch_name && <p className="place-branch">{place.branch_name}</p>}<p className="place-address">{place.address || `${place.city ?? ""} ${place.district ?? ""}`}</p>
-    <div className="place-location-tags" aria-label="高德地点信息">{place.district && <span className="location-tag location-tag--district">行政区 · {place.district}</span>}<span className="location-tag location-tag--source">高德地点</span></div>
+    <div className="place-location-tags" aria-label="高德地点信息">{place.district && <span className="location-tag location-tag--district">行政区 · {displayAmapAdministrativeLocation(place.city, place.district)}</span>}<span className="location-tag location-tag--source">高德地点</span></div>
     <div className="place-navigation"><a className="place-navigation__primary" href={amapNavigationUrl(amapTarget)} target="_blank" rel="noreferrer">去高德导航</a><a className="place-navigation__secondary" href={amapPlaceUrl(amapTarget)} target="_blank" rel="noreferrer">在高德地图查看</a></div><p className="place-navigation__hint">手机会优先唤起高德地图；未安装时将在网页地图中打开。</p>
     <div className="place-stats"><strong>{Number(stats?.average_rating ?? 0).toFixed(1)}</strong><span>小组均分</span><strong>{stats?.mark_count ?? 0}</strong><span>人真实标记</span><strong>{stats?.recommend_count ?? 0}</strong><span>人推荐</span></div>
     {memberNames.length > 0 && <div className="member-summary"><div className="member-avatar-stack" aria-label={`已由 ${memberNames.join("、")} 标记`}>{memberNames.slice(0, 4).map((name, index) => <span className="member-avatar" key={`${name}-${index}`}>{name.slice(0, 1)}</span>)}</div><span>{memberNames.length === 1 ? `${memberNames[0]} 的真实体验` : `${memberNames.length} 位朋友已留下体验`}</span></div>}
