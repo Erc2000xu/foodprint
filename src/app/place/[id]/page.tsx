@@ -10,8 +10,10 @@ type Profile = { display_name?: string } | null;
 type PlacePhoto = { id: string; user_id: string; object_key: string; width: number | null; height: number | null; sort_order: number };
 const categoryLabels = Object.fromEntries(categoryOptions) as Record<string, string>;
 
-export default async function PlaceDetail({ params }: { params: Promise<{ id: string }> }) {
+export default async function PlaceDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ returnTo?: string }> }) {
   const { id } = await params;
+  const { returnTo } = await searchParams;
+  const safeReturnTo = returnTo?.startsWith("/?") || returnTo === "/" ? returnTo : "/";
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/place/${id}`)}`);
@@ -43,7 +45,7 @@ export default async function PlaceDetail({ params }: { params: Promise<{ id: st
   const memberNames = (marks ?? []).map((mark) => (mark.profiles as Profile)?.display_name ?? "成员");
 
   return <AppShell><section className="place-detail">
-    <Link className="back-button" href="/">← 返回地图</Link>
+    <Link className="back-button" href={safeReturnTo}>← 返回结果</Link>
     <p className="eyebrow">{categoryLabels[groupPlace.primary_category] ?? groupPlace.primary_category}</p><h1>{place.name}</h1>
     {place.branch_name && <p className="place-branch">{place.branch_name}</p>}<p className="place-address">{place.address || `${place.city ?? ""} ${place.district ?? ""}`}</p>
     <div className="place-stats"><strong>{Number(stats?.average_rating ?? 0).toFixed(1)}</strong><span>小组均分</span><strong>{stats?.mark_count ?? 0}</strong><span>人真实标记</span><strong>{stats?.recommend_count ?? 0}</strong><span>人推荐</span></div>
