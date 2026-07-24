@@ -18,14 +18,12 @@ export async function loadDiscoveryData(supabase: SupabaseLike, groupId: string)
   if (groupPlacesError || !groupPlaces?.length) return { places: [] as MapPlace[], geoOptions: [] as GeoOption[] };
   const groupPlaceIds = groupPlaces.map((place) => place.id);
   const placeIds = groupPlaces.map((place) => place.place_id);
-  const [{ data: rawPlaces }, { data: stats }, { data: marks }, { data: cuisines }, { data: rawGeoLinks }, { data: photos }, { data: rawGeoOptions }] = await Promise.all([
+  const [{ data: rawPlaces }, { data: stats }, { data: marks }, { data: cuisines }, { data: photos }] = await Promise.all([
     supabase.from("places").select("id, name, address, city, district, latitude, longitude").in("id", placeIds),
     supabase.from("group_place_stats").select("group_place_id, average_rating, mark_count, recommend_count").in("group_place_id", groupPlaceIds),
     supabase.from("place_marks").select("id, group_place_id, price_per_person, recommended_items, short_review, updated_at").in("group_place_id", groupPlaceIds).is("deleted_at", null).order("updated_at", { ascending: false }),
     supabase.from("place_cuisines").select("group_place_id, cuisine_slug").in("group_place_id", groupPlaceIds),
-    supabase.from("place_geo_entities").select("group_place_id, geo_entity_id, geo_entities(id, name, kind, parent_id)").in("group_place_id", groupPlaceIds),
     supabase.from("photos").select("id, group_place_id, object_key, sort_order").in("group_place_id", groupPlaceIds).is("deleted_at", null).order("sort_order"),
-    supabase.from("geo_entities").select("id, kind, name, parent_id").eq("city", "北京").eq("is_active", true).order("sort_order"),
   ]);
   const markRows = (marks ?? []) as MarkRow[];
   const markIds = markRows.map((mark) => mark.id);
@@ -42,13 +40,6 @@ export async function loadDiscoveryData(supabase: SupabaseLike, groupId: string)
   });
   const cuisineByGroupPlace = new Map<string, string[]>();
   (cuisines ?? []).forEach((cuisine) => cuisineByGroupPlace.set(cuisine.group_place_id, [...(cuisineByGroupPlace.get(cuisine.group_place_id) ?? []), cuisine.cuisine_slug]));
-  const geoByGroupPlace = new Map<string, { ids: string[]; labels: string[] }>();
-  (rawGeoLinks ?? []).forEach((link) => {
-    const entities = (Array.isArray(link.geo_entities) ? link.geo_entities : [link.geo_entities]) as Array<{ id: string; name: string } | null>;
-    const current = geoByGroupPlace.get(link.group_place_id) ?? { ids: [], labels: [] };
-    entities.filter((entity): entity is { id: string; name: string } => Boolean(entity)).forEach((entity) => { current.ids.push(entity.id); current.labels.push(entity.name); });
-    if (current.ids.length) geoByGroupPlace.set(link.group_place_id, current);
-  });
   const photosByGroupPlace = new Map<string, PhotoRow>();
   ((photos ?? []) as PhotoRow[]).forEach((photo) => { if (!photosByGroupPlace.has(photo.group_place_id)) photosByGroupPlace.set(photo.group_place_id, photo); });
   const coverRows = [...photosByGroupPlace.values()];
@@ -57,10 +48,8 @@ export async function loadDiscoveryData(supabase: SupabaseLike, groupId: string)
   const places: MapPlace[] = groupPlaces.flatMap((groupPlace) => {
     const place = placeById.get(groupPlace.place_id); const stat = statByGroupPlace.get(groupPlace.id); const mark = latestMark.get(groupPlace.id);
     if (!place || !stat || stat.mark_count < 1 || stat.average_rating === null) return [];
-    const geo = geoByGroupPlace.get(groupPlace.id);
     const cover = photosByGroupPlace.get(groupPlace.id);
-    return [{ id: groupPlace.id, name: place.name, category: groupPlace.primary_category, latitude: Number(place.latitude), longitude: Number(place.longitude), averageRating: Number(stat.average_rating), markCount: Number(stat.mark_count), recommendCount: Number(stat.recommend_count ?? 0), sceneTags: scenesByGroupPlace.get(groupPlace.id) ?? [], city: place.city ?? undefined, district: place.district ?? undefined, address: place.address ?? undefined, cuisineSlugs: cuisineByGroupPlace.get(groupPlace.id) ?? [], pricePerPerson: mark?.price_per_person === null || mark?.price_per_person === undefined ? null : Number(mark.price_per_person), recommendedItems: mark?.recommended_items ?? [], review: mark?.short_review ?? null, lastMarkedAt: mark?.updated_at ?? null, geoEntityIds: geo?.ids ?? [], geoLabels: geo?.labels ?? [], coverPhotoUrl: cover ? signedByObjectKey.get(cover.object_key) ?? null : null }];
+    return [{ id: groupPlace.id, name: place.name, category: groupPlace.primary_category, latitude: Number(place.latitude), longitude: Number(place.longitude), averageRating: Number(stat.average_rating), markCount: Number(stat.mark_count), recommendCount: Number(stat.recommend_count ?? 0), sceneTags: scenesByGroupPlace.get(groupPlace.id) ?? [], city: place.city ?? undefined, district: place.district ?? undefined, address: place.address ?? undefined, cuisineSlugs: cuisineByGroupPlace.get(groupPlace.id) ?? [], pricePerPerson: mark?.price_per_person === null || mark?.price_per_person === undefined ? null : Number(mark.price_per_person), recommendedItems: mark?.recommended_items ?? [], review: mark?.short_review ?? null, lastMarkedAt: mark?.updated_at ?? null, coverPhotoUrl: cover ? signedByObjectKey.get(cover.object_key) ?? null : null }];
   });
-  const geoOptions: GeoOption[] = ((rawGeoOptions ?? []) as Array<{ id: string; kind: GeoOption["kind"]; name: string; parent_id: string | null }>).filter((area) => ["district", "business_district", "metro_line", "metro_station"].includes(area.kind)).map((area) => ({ id: area.id, kind: area.kind, name: area.name, parentId: area.parent_id }));
-  return { places, geoOptions };
+  return { places, geoOptions: [] as GeoOption[] };
 }

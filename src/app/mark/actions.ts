@@ -10,6 +10,8 @@ export type PoiLookup = { error?: string; found?: boolean };
 export type MarkResult = { error?: string; success?: string };
 export type PoiSearchCandidate = { poiId: string; name: string; address: string; city: string; district: string; latitude: number; longitude: number };
 export type PoiSearchResult = { candidates: PoiSearchCandidate[]; error?: string };
+export type AmapDistrict = { adcode: string; name: string };
+export type AmapDistrictResult = { districts: AmapDistrict[]; error?: string };
 
 const rating = z.coerce.number().min(1).max(5).refine((value) => Number.isInteger(value * 2), "评分必须以 0.5 为步进。");
 const optionalRating = z.preprocess((value) => value === "" || value === null ? undefined : value, rating.optional());
@@ -56,6 +58,27 @@ export async function searchAmapPoiTips(keyword: string): Promise<PoiSearchResul
     const message = error instanceof Error ? error.message : "unknown error";
     console.error("AMap POI search failed", { message });
     return { candidates: [], error: "高德地点搜索服务暂时无法连接。" };
+  }
+}
+
+/** Uses AMap as the administrative-division authority, not a hand-maintained table. */
+export async function getAmapBeijingDistricts(): Promise<AmapDistrictResult> {
+  if (!process.env.AMAP_WEBSERVICE_KEY) return { districts: [], error: "地点筛选服务尚未配置。" };
+  const activeGroup = await getActiveGroupId();
+  if ("error" in activeGroup) return { districts: [], error: activeGroup.error };
+  const upstream = new URL("https://restapi.amap.com/v3/config/district");
+  upstream.searchParams.set("key", process.env.AMAP_WEBSERVICE_KEY);
+  upstream.searchParams.set("keywords", "北京");
+  upstream.searchParams.set("subdistrict", "1");
+  upstream.searchParams.set("extensions", "base");
+  try {
+    const response = await fetch(upstream, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
+    const payload = await response.json() as { status?: string; info?: string; districts?: Array<{ districts?: Array<{ name?: string; adcode?: string }> }> };
+    if (!response.ok || payload.status !== "1") return { districts: [], error: payload.info ?? "高德行政区数据暂时不可用。" };
+    return { districts: (payload.districts?.[0]?.districts ?? []).flatMap((district) => district.name && district.adcode ? [{ name: district.name, adcode: district.adcode }] : []) };
+  } catch (error) {
+    console.error("AMap district lookup failed", { message: error instanceof Error ? error.message : "unknown error" });
+    return { districts: [], error: "高德行政区数据暂时不可用。" };
   }
 }
 
