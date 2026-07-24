@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MapPlace } from "@/components/map/amap-map";
 
-export function StaticAmapMap({ places }: { places: MapPlace[] }) {
+export function StaticAmapMap({ places, onError }: { places: MapPlace[]; onError?: (error: Error) => void }) {
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
 
@@ -15,7 +15,7 @@ export function StaticAmapMap({ places }: { places: MapPlace[] }) {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        if (!cancelled) setError("登录状态已失效，请重新登录后查看地图。");
+        if (!cancelled) { setError("登录状态已失效，请重新登录后查看地图。"); onError?.(new Error("session expired")); }
         return;
       }
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/amap-static-map`, {
@@ -29,7 +29,7 @@ export function StaticAmapMap({ places }: { places: MapPlace[] }) {
       });
       if (cancelled) return;
       if (!response.ok || !response.headers.get("content-type")?.startsWith("image/")) {
-        setError("地图图片暂时无法生成，请使用列表浏览地点。");
+        setError("地图图片暂时无法生成，请使用列表浏览地点。"); onError?.(new Error("static map unavailable"));
         return;
       }
       const data = await response.blob();
@@ -39,7 +39,7 @@ export function StaticAmapMap({ places }: { places: MapPlace[] }) {
     };
     void load();
     return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [places]);
+  }, [places, onError]);
 
   if (error) return <div className="map-fallback map-fallback--error"><strong>地图暂时不可用</strong><span>{error}</span></div>;
   if (!imageUrl) return <div className="map-fallback"><strong>正在生成真实地图…</strong><span>正在从高德地图服务获取共同地点底图。</span></div>;

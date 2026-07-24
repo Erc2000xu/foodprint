@@ -7,6 +7,7 @@ import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/action
 import { categoryOptions, qualityLabels, sceneTags, type PlaceCategory } from "@/lib/mark-options";
 import { PhotoPicker } from "@/components/mark/photo-picker";
 import { createClient } from "@/lib/supabase/client";
+import { cuisineOptions } from "@/lib/discovery-options";
 
 export type MarkCandidate = {
   poiId: string;
@@ -92,6 +93,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
   const [alreadyInGroup, setAlreadyInGroup] = useState(Boolean(initialCandidate));
   const [selectionError, setSelectionError] = useState("");
   const [primaryCategory, setPrimaryCategory] = useState<PlaceCategory>("restaurant");
+  const [cuisine, setCuisine] = useState<(typeof cuisineOptions)[number][0]>("beijing_northern");
   const [userLocation, setUserLocation] = useState<UserLocation>();
   const [locationState, setLocationState] = useState("");
   const [isLookingUp, startLookup] = useTransition();
@@ -169,6 +171,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       <input type="hidden" name="longitude" value={selected.longitude} />
       <input type="hidden" name="branch_name" value="" />
       <label>地点类型<select name="primary_category" value={primaryCategory} onChange={(event) => setPrimaryCategory(event.target.value as PlaceCategory)}>{categoryOptions.map(([value, categoryLabel]) => <option key={value} value={value}>{categoryLabel}</option>)}</select></label>
+      <label>主菜系 <span className="required-mark">必填</span><select name="cuisine_slug" value={cuisine} onChange={(event) => setCuisine(event.target.value as typeof cuisine)}>{cuisineOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="attestation"><input name="attested" type="checkbox" required /> <span>我确认已亲自到访或体验过这里，内容基于真实体验。<b>必填</b></span></label>
       <StarRating name="overall_rating" label="综合体验" required />
       <div className="rating-grid">

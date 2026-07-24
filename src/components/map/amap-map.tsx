@@ -12,6 +12,18 @@ export type MapPlace = {
   averageRating: number;
   markCount: number;
   sceneTags: string[];
+  city?: string;
+  district?: string;
+  address?: string;
+  cuisineSlugs?: string[];
+  pricePerPerson?: number | null;
+  recommendedItems?: string[];
+  review?: string | null;
+  lastMarkedAt?: string | null;
+  recommendCount?: number;
+  geoEntityIds?: string[];
+  geoLabels?: string[];
+  coverPhotoUrl?: string | null;
 };
 
 const defaultCenter: [number, number] = [116.397428, 39.90923];

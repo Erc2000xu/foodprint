@@ -50,3 +50,28 @@ export async function updateMemberStatus(_: ManagementResult, formData: FormData
   revalidatePath("/admin");
   return { success: status.data === "suspended" ? "成员已暂停。" : "成员已恢复。" };
 }
+
+export async function completePlaceCuisine(_: ManagementResult, formData: FormData): Promise<ManagementResult> {
+  const groupPlaceId = z.string().uuid().safeParse(formData.get("group_place_id"));
+  const cuisineSlug = z.string().regex(/^[a-z0-9_]+$/).safeParse(formData.get("cuisine_slug"));
+  if (!groupPlaceId.success || !cuisineSlug.success) return { error: "地点或菜系信息无效。" };
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "请先登录。" };
+  const { data: groupPlace } = await supabase.from("group_places").select("group_id").eq("id", groupPlaceId.data).maybeSingle();
+  if (!groupPlace) return { error: "地点不存在或无权访问。" };
+  const { data: membership } = await supabase.from("group_members").select("role").eq("group_id", groupPlace.group_id).eq("user_id", user.id).eq("status", "active").maybeSingle();
+  if (!membership || !["owner", "admin"].includes(membership.role)) return { error: "只有 Owner 或 Admin 可以完善历史地点。" };
+  const { error } = await supabase.rpc("set_group_place_cuisines", { p_group_place_id: groupPlaceId.data, p_cuisine_slugs: [cuisineSlug.data] });
+  if (error) return { error: error.message };
+  const geoEntityIds = formData.getAll("geo_entity_ids").flatMap((value) => {
+    const parsed = z.string().uuid().safeParse(value);
+    return parsed.success ? [parsed.data] : [];
+  }).slice(0, 4);
+  const { error: geoError } = await supabase.rpc("set_group_place_discovery_geo_entities", { p_group_place_id: groupPlaceId.data, p_geo_entity_ids: geoEntityIds });
+  if (geoError) return { error: `菜系已保存，但位置关联失败：${geoError.message}` };
+  revalidatePath("/");
+  revalidatePath("/admin");
+  revalidatePath("/discover");
+  return { success: "已补充检索信息。" };
+}

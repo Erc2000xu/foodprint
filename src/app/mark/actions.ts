@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { sceneTags } from "@/lib/mark-options";
+import { cuisineOptions } from "@/lib/discovery-options";
 import { createClient } from "@/lib/supabase/server";
 
 export type PoiLookup = { error?: string; found?: boolean };
@@ -15,6 +16,7 @@ const optionalRating = z.preprocess((value) => value === "" || value === null ? 
 const optionalDate = z.preprocess((value) => value === "" || value === null ? undefined : value, z.string().date().optional());
 const optionalRevisit = z.preprocess((value) => value === "" || value === null ? undefined : value, z.enum(["yes", "maybe", "no"]).optional());
 const sceneTagSlugs = sceneTags.map(([slug]) => slug) as [string, ...string[]];
+const cuisineSlugs = cuisineOptions.map(([slug]) => slug) as [string, ...string[]];
 
 async function getActiveGroupId() {
   const supabase = await createClient();
@@ -79,6 +81,7 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     would_recommend: z.enum(["true", "false"]), would_revisit: optionalRevisit, first_visited_on: optionalDate, last_visited_on: optionalDate,
     short_review: z.string().trim().max(1000).optional(), recommended_items: z.string().max(400).optional(), price_per_person: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().min(0).max(100000).optional()), attested: z.literal("on"),
     scene_tags: z.array(z.enum(sceneTagSlugs)).max(sceneTagSlugs.length),
+    cuisine_slug: z.enum(cuisineSlugs),
   }).safeParse({ ...Object.fromEntries(formData), scene_tags: formData.getAll("scene_tags") });
   if (!fields.success) return { error: fields.error.issues[0]?.message ?? "请检查填写内容。" };
   const value = fields.data;
@@ -92,6 +95,11 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     p_service_rating: value.service_rating ?? null, p_uniqueness_rating: value.uniqueness_rating ?? null, p_would_revisit: value.would_revisit ?? null,
   });
   if (error || !data?.[0]?.mark_id) return { error: error?.message ?? "保存标记失败。" };
+  const { error: cuisineError } = await activeGroup.supabase.rpc("set_group_place_cuisines", {
+    p_group_place_id: data[0].group_place_id,
+    p_cuisine_slugs: [value.cuisine_slug],
+  });
+  if (cuisineError) return { error: "真实标记已保存，但菜系暂未保存：" + cuisineError.message };
   const { error: sceneTagError } = await activeGroup.supabase.rpc("set_place_mark_scene_tags", {
     p_mark_id: data[0].mark_id,
     p_scene_tag_slugs: value.scene_tags,
@@ -122,6 +130,8 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
       return { error: `真实标记已保存，但第 ${sortOrder + 1} 张照片登记失败：${photoError.message}` };
     }
   }
+  const { error: discoveryError } = await activeGroup.supabase.rpc("refresh_group_place_discovery_metadata", { p_group_place_id: data[0].group_place_id });
+  if (discoveryError) return { error: `真实标记已保存，但检索信息待后台补充：${discoveryError.message}` };
   revalidatePath("/");
   revalidatePath("/discover");
   revalidatePath(`/place/${data[0].group_place_id}`);
