@@ -60,6 +60,10 @@ npm run build
 
 业务功能将在后续阶段依赖这些接口，不能直接在页面和组件中散落调用 Supabase、高德或存储服务。这样可在未来以腾讯云 COS、国内认证和其他地图适配器替换底层实现，而不重写业务组件。V1 的生产容器、迁移步骤及备案后腾讯云切流清单见 [docs/OPERATIONS.md](docs/OPERATIONS.md)。
 
+## 高德免费版硬性约束
+
+Foodprint 中长期只使用高德开放平台免费版在当前主体、用途和免费配额内明确允许的能力；不采购流量包、技术服务许可、增值套餐或高级服务。超出免费范围时必须停用/降级或改用其他合规方案，不能自动付费。具体能力清单、商圈数据策略、配额防线和合规前提见 [docs/AMAP_FREE_TIER_POLICY.md](docs/AMAP_FREE_TIER_POLICY.md)。
+
 ## 当前部署要点
 
 1. 在 Vercel 配置 Supabase 公共变量及高德 JS Key / JS 安全密钥；不要把高德 Web 服务 Key 放到 Vercel 或浏览器。

@@ -64,14 +64,8 @@ export async function completePlaceCuisine(_: ManagementResult, formData: FormDa
   if (!membership || !["owner", "admin"].includes(membership.role)) return { error: "只有 Owner 或 Admin 可以完善历史地点。" };
   const { error } = await supabase.rpc("set_group_place_cuisines", { p_group_place_id: groupPlaceId.data, p_cuisine_slugs: [cuisineSlug.data] });
   if (error) return { error: error.message };
-  const geoEntityIds = formData.getAll("geo_entity_ids").flatMap((value) => {
-    const parsed = z.string().uuid().safeParse(value);
-    return parsed.success ? [parsed.data] : [];
-  }).slice(0, 4);
-  const { error: geoError } = await supabase.rpc("set_group_place_discovery_geo_entities", { p_group_place_id: groupPlaceId.data, p_geo_entity_ids: geoEntityIds });
-  if (geoError) return { error: `菜系已保存，但位置关联失败：${geoError.message}` };
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath("/discover");
-  return { success: "已补充检索信息。" };
+  return { success: "已补充菜系信息。" };
 }
