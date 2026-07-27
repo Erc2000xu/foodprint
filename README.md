@@ -2,6 +2,10 @@
 
 由朋友共同维护、只收录真实体验和真实推荐的餐饮地点地图。V1 以北京为首发城市，提供列表优先的结构化检索；静态地图与列表共享 URL 筛选状态，并为未来互动地图保留 Adapter 接口。
 
+项目的长期起源、产品目标、部署路线和不可忽略的约束见 [项目背景与长期约束](docs/PROJECT_CONTEXT.md)；当前 V1.1 的交接与发布状态见 [V1.1 状态交接](docs/FOODPRINT_V1_1_STATUS_HANDOFF_2026-07-24.md)。
+
+V1.1.1 的邀请与成员治理需求、权限规则和验收标准见 [V1.1.1 开发文档](docs/FOODPRINT_V1_1_1_INVITATION_MEMBER_GOVERNANCE.md)。
+
 当前 MVP 已具备：邀请制邮箱注册/登录、共同小组与成员管理、高德地点搜索、真实体验标记、共同地图与列表、想去、组合筛选、私有照片画廊、PWA 安装、离线壳和数据导出。界面以 iPhone Air 宽度（420px）为优先移动端基线。
 
 ## 技术基线
@@ -41,6 +45,7 @@ npm run build
 | `NEXT_PUBLIC_AMAP_KEY` | 高德 Web JS Key | 浏览器可见，须绑定域名 |
 | `AMAP_SECURITY_KEY` | 高德 JS 安全密钥 | 仅服务端 |
 | `AMAP_WEBSERVICE_KEY` | 高德 Web 服务 Key，用于地点搜索 | 只保存于 Supabase Edge Function Secret；不设 `NEXT_PUBLIC_` |
+| `INVITATION_TOKEN_ENCRYPTION_KEY` | 加密保存仍有效的邀请 token，便于 Owner/Admin 刷新后重新复制链接 | 仅 Vercel/受控服务端；随机值至少 32 字符，绝不提交 |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase 项目 URL | 浏览器可见 |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase Publishable Key | 浏览器可见 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 仅用于受控服务端任务 | 仅服务端 |

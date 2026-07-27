@@ -4,12 +4,17 @@ import { cuisineOptions } from "@/lib/discovery-options";
 import { getActiveDiscoveryGroup, loadDiscoveryData } from "@/lib/discovery/server";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
+
+function MapBrowserFallback() {
+  return <div className="empty-note">正在加载地图与地点…</div>;
+}
 
 export default async function Home() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return <AppShell><MapBrowser places={[]} cuisineOptions={cuisineOptions} geoOptions={[]} /></AppShell>;
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return <AppShell><Suspense fallback={<MapBrowserFallback />}><MapBrowser places={[]} cuisineOptions={cuisineOptions} geoOptions={[]} /></Suspense></AppShell>;
   const supabase = await createClient();
   const groupId = await getActiveDiscoveryGroup(supabase);
   if (!groupId) redirect("/login");
   const { places, geoOptions } = await loadDiscoveryData(supabase, groupId);
-  return <AppShell><MapBrowser places={places} cuisineOptions={cuisineOptions} geoOptions={geoOptions} /></AppShell>;
+  return <AppShell><Suspense fallback={<MapBrowserFallback />}><MapBrowser places={places} cuisineOptions={cuisineOptions} geoOptions={geoOptions} /></Suspense></AppShell>;
 }

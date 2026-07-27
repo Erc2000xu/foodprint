@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { revokeInvitation, type ManagementResult } from "@/app/admin/actions";
 
 export type InvitationSummary = {
@@ -10,6 +10,7 @@ export type InvitationSummary = {
   maxUses: number;
   useCount: number;
   status: "可使用" | "已用完" | "已过期" | "已撤销";
+  inviteUrl?: string;
 };
 
 const initial: ManagementResult = {};
@@ -27,16 +28,31 @@ function RevokeInvitationButton({ invitationId }: { invitationId: string }) {
   );
 }
 
+function CopyInvitationLink({ inviteUrl }: { inviteUrl: string }) {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopied(true); setError("");
+    } catch {
+      setError("复制失败，请长按链接手动复制。");
+    }
+  }
+  return <div className="invitation-link"><code>{inviteUrl}</code><button className="text-button" type="button" onClick={copy}>{copied ? "已复制" : "复制链接"}</button>{error && <small className="inline-action__error">{error}</small>}</div>;
+}
+
 export function InvitationList({ invitations }: { invitations: InvitationSummary[] }) {
   if (invitations.length === 0) return <p className="empty-note">还没有生成过邀请链接。</p>;
   return <ul className="invitation-list">
     {invitations.map((invitation) => (
       <li key={invitation.id}>
-        <span>
+        <div className="invitation-list__content">
           <strong>{invitation.status}</strong>
           <small>创建于 {formatter.format(new Date(invitation.createdAt))} · 已使用 {invitation.useCount}/{invitation.maxUses} 人</small>
           <small>有效至 {formatter.format(new Date(invitation.expiresAt))}</small>
-        </span>
+          {invitation.inviteUrl ? <CopyInvitationLink inviteUrl={invitation.inviteUrl} /> : <small>此链接创建于旧版本，无法重新显示；请新建一条邀请替代。</small>}
+        </div>
         {invitation.status === "可使用" && <RevokeInvitationButton invitationId={invitation.id} />}
       </li>
     ))}

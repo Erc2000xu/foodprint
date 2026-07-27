@@ -188,6 +188,13 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--color-accent); 
 .member-avatar-stack { display: flex; padding-left: 5px; }
 .member-avatar-stack .member-avatar { width: 29px; height: 29px; margin-left: -5px; border: 2px solid var(--color-surface); font-size: 11px; }
 .scene-summary { margin-top: 18px; padding: 14px; border-radius: 16px; background: #eef6f1; }
+
+/* V1.1.1 invitation and member governance */
+.invitation-list__content { min-width: 0; flex: 1; }
+.invitation-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: center; margin-top: 8px; }
+.invitation-link code { min-width: 0; overflow-wrap: anywhere; color: var(--color-text); font-size: 11px; line-height: 1.4; }
+.member-role-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.member-role-control select { min-height: 34px; border: 1px solid var(--color-border); border-radius: 10px; padding: 0 6px; color: var(--color-text); background: white; font-size: 12px; }
 .scene-summary h2 { margin: 0 0 9px; color: var(--color-primary-strong); font-size: 14px; }
 .scene-summary > div, .mark-scene-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .scene-summary span, .mark-scene-tags span { padding: 4px 8px; border-radius: 99px; color: #176441; background: white; font-size: 12px; font-weight: 700; }
