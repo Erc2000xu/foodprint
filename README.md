@@ -6,6 +6,10 @@
 
 V1.1.1 的邀请与成员治理需求、权限规则和验收标准见 [V1.1.1 开发文档](docs/FOODPRINT_V1_1_1_INVITATION_MEMBER_GOVERNANCE.md)。
 
+本轮 V1.1.1 的发布、配置、验证记录与后续事项见 [V1.1.1 发布交接](docs/FOODPRINT_V1_1_1_RELEASE_HANDOFF_2026-07-27.md)。
+
+从 V1.1.1 收口后，产品定位与当前版本基线以[产品总览](docs/PRODUCT.md)为准；版本方向、状态与进入条件以[产品路线图](docs/ROADMAP.md)为准；每次开发都遵循[产品开发工作流](docs/DEVELOPMENT_WORKFLOW.md)。
+
 当前 MVP 已具备：邀请制邮箱注册/登录、共同小组与成员管理、高德地点搜索、真实体验标记、共同地图与列表、想去、组合筛选、私有照片画廊、PWA 安装、离线壳和数据导出。界面以 iPhone Air 宽度（420px）为优先移动端基线。
 
 ## 技术基线
