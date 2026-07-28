@@ -6,8 +6,9 @@ import Link from "next/link";
 import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/actions";
 import { categoryOptions, qualityLabels, sceneTags, type PlaceCategory } from "@/lib/mark-options";
 import { PhotoPicker } from "@/components/mark/photo-picker";
-import { createClient } from "@/lib/supabase/client";
 import { cuisineOptions } from "@/lib/discovery-options";
+import { amapFailureMessage } from "@/lib/amap/failure-message";
+import { searchAmapPoiTips } from "@/lib/amap/poi-client";
 
 export type MarkCandidate = {
   poiId: string;
@@ -24,19 +25,7 @@ type UserLocation = { latitude: number; longitude: number };
 
 const initial: MarkResult = {};
 async function searchAmapTips(keyword: string, location?: UserLocation): Promise<{ candidates: MarkCandidate[]; error?: string }> {
-  const supabase = createClient();
-  const { data, error } = await supabase.functions.invoke("amap-poi-search", { body: { keyword, location } });
-  if (error) {
-    const context = error.context;
-    if (context instanceof Response) {
-      const payload = await context.json().catch(() => null) as { error?: string; errorCode?: string } | null;
-      if (payload?.error) return { candidates: [], error: `${payload.error}${payload.errorCode ? `（${payload.errorCode}）` : ""}` };
-    }
-    return { candidates: [], error: "地点搜索服务暂时无法连接。" };
-  }
-  const payload = data as { candidates?: MarkCandidate[]; error?: string; errorCode?: string } | null;
-  if (payload?.error) return { candidates: [], error: `${payload.error}${payload.errorCode ? `（${payload.errorCode}）` : ""}` };
-  return { candidates: payload?.candidates ?? [] };
+  return searchAmapPoiTips(keyword, location);
 }
 
 function distanceInMeters(from: UserLocation, to: MarkCandidate) {
@@ -116,8 +105,8 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
         setSearching(false);
       };
       void searchAmapTips(keyword.trim(), userLocation)
-        .then(({ candidates, error }) => finish(candidates, error ? `高德搜索失败：${error}` : ""))
-        .catch(() => finish([], "高德搜索服务暂时无法连接。"));
+        .then(({ candidates, error }) => finish(candidates, error ?? ""))
+        .catch(() => finish([], amapFailureMessage("network_failure")));
     }, 420);
     return () => window.clearTimeout(timer);
   }, [keyword, selected, userLocation]);

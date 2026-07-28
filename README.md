@@ -76,7 +76,7 @@ Foodprint 中长期只使用高德开放平台免费版在当前主体、用途�
 ## 当前部署要点
 
 1. 在 Vercel 配置 Supabase 公共变量及高德 JS Key / JS 安全密钥；不要把高德 Web 服务 Key 放到 Vercel 或浏览器。
-2. 在 Supabase Edge Function Secrets 中配置 `AMAP_WEBSERVICE_KEY`，然后部署 `amap-poi-search`。地点搜索经该函数调用高德，避免公开 Web 服务 Key。
+2. 在 Supabase Edge Function Secrets 中配置 `AMAP_WEBSERVICE_KEY` 与 `APP_ALLOWED_ORIGINS`，然后同时部署 `amap-poi-search` 和 `amap-static-map`。`APP_ALLOWED_ORIGINS` 只填写精确的生产/本地地址；地点搜索与静态地图均经这些函数调用高德，避免公开 Web 服务 Key。
 3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。执行 `supabase db push` 后再提交对应 migration；Docker 的本地 migration-cache 警告不代表远程迁移失败。
 4. 首个 Owner 可由受控脚本初始化；邀请链接只由 Owner 生成。
 5. PWA 不需要额外密钥：生产环境会自动注册 `/service-worker.js`。图标、manifest、离线页和安装引导已经内置。

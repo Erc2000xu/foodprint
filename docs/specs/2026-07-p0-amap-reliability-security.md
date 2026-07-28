@@ -1,17 +1,19 @@
 # P0｜高德连接可靠性与安全基线
 
-> 状态：待批准
+> 状态：开发中
 > 优先级：P0，必须先于所有依赖地点检索的新功能
 > 版本目标：恢复并持续保障当前 Vercel 阶段的地点检索、静态地图和导航相关链路。
 
 ## 1. 背景与问题
 
-当前使用地址为 https://foodprint-go4imq8gp-eric2000-s-projects.vercel.app/。代码中两个 Supabase Edge Function 的允许来源仅包含 https://foodprint-nine.vercel.app 和 http://localhost:3000：
+项目负责人已确认通过 `main` 触发的 Production 地址 `https://foodprint-nine.vercel.app` 可以登录并使用高德服务；这说明正式生产链路当前可用。此前从 Vercel Preview Deployment `https://foodprint-go4imq8gp-eric2000-s-projects.vercel.app` 打开时发生错误。
+
+代码中两个 Supabase Edge Function 的允许来源仅包含 `https://foodprint-nine.vercel.app` 和 `http://localhost:3000`：
 
 - amap-poi-search：地点搜索。
 - amap-static-map：静态地图。
 
-因此新部署 URL 调用时会先被 Edge Function 以 403 拒绝，再也不会到达高德。这高度解释了“以前可用、现在连接不上”：此前访问的是旧的受控别名或当时配置；部署 URL 变化后，严格的 Origin 配置没有同步。仍须在 P0 发布时用浏览器网络请求确认实际状态码与错误内容。
+因此该 Preview URL 调用时会先被 Edge Function 以 403 拒绝，再也不会到达高德。这解释了“`main` 可以使用、某个 Deployment 不能使用”的差异：不是高德整体失效，而是来源配置漂移。P0 仍然需要完成，以消除硬编码、统一两个函数的安全边界，并建立每次发布的可验证流程；它不应为了让所有临时 Preview 都可用而放宽为通配符。
 
 此外，高德 JavaScript API 的 Key 域名白名单也可能未包含当前受控地址。该问题与 Edge Function 的 CORS 白名单是两层不同配置，必须分别核验。
 
@@ -88,6 +90,14 @@
 
 ## 7. 未决项
 
-- 应作为长期 Production Alias 的确切 Vercel 地址，还是先绑定临时自定义域名。
-- 允许 Preview 的具体名单、保留期限和负责人。
-- 当前高德控制台 Key 是否已有域名白名单错误，需要实施时查看控制台确认。
+- 长期 Production Alias 保持 `https://foodprint-nine.vercel.app`，直至自定义域名/大陆切流另行批准。
+- 是否需要授权某一个 Preview：默认不授权；若需要，必须列出精确地址、验收负责人和移除日期。
+- 当前高德控制台 Key 的生产域名白名单仍需由控制台维护者核验。
+
+## 8. 本次实施记录（待生产验收）
+
+- 两个 Edge Function 已改为从 `APP_ALLOWED_ORIGINS` Secret 读取精确来源；缺失或错误配置会失败关闭，不会隐式回退到硬编码域名。
+- 函数响应不再把高德 `infocode` 或上游详情发送到浏览器；仅记录不含关键词、坐标、用户 ID 或密钥的匿名 `amap_event`。
+- 搜索和静态地图均提供统一的非技术性错误信息；静态地图新增显式重试入口和列表降级。
+- 移除了未被使用、却可能要求 Vercel 保存 Web Service Key 的 Server Action 调用；该 Key 只保留在 Supabase Edge Function Secret。
+- 尚未关闭：控制台 Secret 写入、两个函数部署、高德域名白名单核验，以及桌面/真机生产验收。完成前本版本保持“开发中/待验收”，不得进入 V1.2。

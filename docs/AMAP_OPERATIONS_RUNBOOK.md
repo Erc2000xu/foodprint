@@ -29,6 +29,26 @@
 - 检查错误状态、控制台无密钥泄漏、日志无原始用户敏感数据。
 - 记录验收人、时间、发布版本、成功/失败与回滚决定。
 
+## P0 发布命令与配置顺序
+
+1. 在 Supabase Edge Function Secrets 设置 `APP_ALLOWED_ORIGINS`。当前默认值为：
+
+   ```text
+   https://foodprint-nine.vercel.app,http://localhost:3000
+   ```
+
+   不要加入 `*.vercel.app`。如必须验收某个 Preview，只能临时追加该完整 URL，并在记录中写明负责人和移除日期；验收后立即删掉。
+2. 确认 `AMAP_WEBSERVICE_KEY` 仍只存在于 Supabase Secret；不要把它填入 Vercel 的环境变量。
+3. 从已登录且已链接正确 Supabase 项目的终端执行：
+
+   ```bash
+   supabase functions deploy amap-poi-search
+   supabase functions deploy amap-static-map
+   ```
+
+4. 在高德控制台确认 JavaScript API Key 的域名白名单至少含 `foodprint-nine.vercel.app`。它与 `APP_ALLOWED_ORIGINS` 是两项独立设置。
+5. 记录函数部署时间、Production URL、允许 Preview（如有）、验收人和结果；不得将 Secret 值或控制台截图中的敏感信息写入仓库。
+
 ## 配额与安全
 
 - 健康检查使用固定测试词，每天不超过 4 次；不可用爬虫模拟全城搜索。

@@ -15,7 +15,7 @@ P0 是唯一立即阻塞项：V1.2 的地点检索入口依赖稳定高德服务
 | --- | --- | --- |
 | PRODUCT.md | 生效 | 长期产品意图、语言、信息架构和不变约束 | 无 |
 | ROADMAP.md | 生效 | 版本顺序、依赖和状态 | 无 |
-| specs/2026-07-p0-amap-reliability-security.md | 待批准 | 恢复高德连接、配置治理、降级和运维 | 确认当前受控地址和维护者 |
+| specs/2026-07-p0-amap-reliability-security.md | 开发中 | 高德来源配置治理、降级和运维 | 确认当前受控地址和维护者 |
 | decisions/2026-07-02-amap-origin-service-boundary.md | 已记录 | 地图 Key、Origin 和代理边界 | P0 实施前复核 |
 | AMAP_OPERATIONS_RUNBOOK.md | 生效 | 地图故障、发布、配额和密钥操作 | 每次地图/域名发布 |
 | specs/2026-07-v1-2-discovery-try-list.md | 待批准 | 发现、去试试、下回吃与候选流转 | P0 验收、生命周期工程设计 |

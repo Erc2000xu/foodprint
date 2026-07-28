@@ -4,7 +4,7 @@ import Link from "next/link";
 /* eslint-disable @next/next/no-img-element */
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { getAmapBeijingDistricts, searchAmapPoiTips, type AmapDistrict, type PoiSearchCandidate } from "@/app/mark/actions";
+import { getAmapBeijingDistricts, searchAmapPoiTips, type AmapDistrict, type AmapPoiCandidate } from "@/lib/amap/poi-client";
 import type { MapPlace } from "@/components/map/amap-map";
 import { StaticMapAdapter } from "@/components/map/map-adapter";
 import { displayAmapAdministrativeLocation } from "@/lib/amap/location-display";
@@ -26,7 +26,7 @@ function distanceMeters(from: Origin, place: MapPlace) {
   const a = Math.sin(lat / 2) ** 2 + Math.cos(from.latitude * radians) * Math.cos(place.latitude * radians) * Math.sin(lng / 2) ** 2;
   return 2 * radius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
-function locationKind(candidate: PoiSearchCandidate): LocationFilter["kind"] {
+function locationKind(candidate: AmapPoiCandidate): LocationFilter["kind"] {
   return /地铁|轨道|站/.test(`${candidate.name} ${candidate.address}`) ? "metro_station" : "business_district";
 }
 function locationKindLabel(kind: LocationFilter["kind"]) { return kind === "district" ? "行政区" : kind === "metro_station" ? "地铁 / 交通" : "商圈 / 地点"; }
@@ -49,7 +49,7 @@ export function MapBrowser({ places, cuisineOptions }: { places: MapPlace[]; cui
   const [locationMessage, setLocationMessage] = useState("");
   const [districts, setDistricts] = useState<AmapDistrict[]>([]);
   const [districtError, setDistrictError] = useState("");
-  const [amapSuggestions, setAmapSuggestions] = useState<PoiSearchCandidate[]>([]);
+  const [amapSuggestions, setAmapSuggestions] = useState<AmapPoiCandidate[]>([]);
   const [amapError, setAmapError] = useState("");
   const [isSearchingAmap, setIsSearchingAmap] = useState(false);
   const [locationFilter, setLocationFilter] = useState<LocationFilter>();
@@ -103,7 +103,7 @@ export function MapBrowser({ places, cuisineOptions }: { places: MapPlace[]; cui
   };
   const detailHref = (id: string) => ({ pathname: `/place/${id}`, query: { returnTo: currentUrl } });
   const selectDistrict = (district: AmapDistrict) => { setLocationFilter({ id: `amap-district-${district.adcode}`, name: district.name, kind: "district" }); setAmapSuggestions([]); commit({ query: undefined, areaIds: [] }); };
-  const selectAmapLocation = (candidate: PoiSearchCandidate) => { const kind = locationKind(candidate); setLocationFilter({ id: candidate.poiId, name: candidate.name, kind, latitude: candidate.latitude, longitude: candidate.longitude }); setDraftQuery(""); setAmapSuggestions([]); commit({ query: undefined, areaIds: [] }); };
+  const selectAmapLocation = (candidate: AmapPoiCandidate) => { const kind = locationKind(candidate); setLocationFilter({ id: candidate.poiId, name: candidate.name, kind, latitude: candidate.latitude, longitude: candidate.longitude }); setDraftQuery(""); setAmapSuggestions([]); commit({ query: undefined, areaIds: [] }); };
   const suggestions = useMemo(() => {
     const keyword = draftQuery.trim().toLocaleLowerCase("zh-CN");
     if (!keyword) return [] as Array<{ type: "cuisine" | "place"; id: string; label: string; description: string }>;
