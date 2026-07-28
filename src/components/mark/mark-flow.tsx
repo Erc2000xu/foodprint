@@ -143,7 +143,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
     });
   };
 
-  if (state.success) return <section className="mark-card mark-success-card"><Image className="mark-success-mascot" src="/mascot/mark-success.jpg" width={220} height={220} alt="食迹腊肠狗把地点标记在地图上" priority /><p className="eyebrow">标记完成</p><h1>已留下一次真实体验</h1><p className="form-success">{state.success}</p><Link className="primary-link" href="/">回到共同地图</Link></section>;
+  if (state.success) return <section className="mark-card mark-success-card"><Image className="mark-success-mascot" src="/mascot/mark-success.jpg" width={220} height={220} alt="食迹腊肠狗把地点标记在地图上" priority /><p className="eyebrow">标记完成</p><h1>已留下一次真实体验</h1><p className="form-success">{state.success}</p><Link className="primary-link" href="/discover">回到发现</Link></section>;
 
   if (selected) return <section className="mark-card">
     <button className="back-button" type="button" onClick={() => { setSelected(undefined); setKeyword(""); }}>← 重新搜索</button>

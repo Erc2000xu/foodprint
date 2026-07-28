@@ -47,9 +47,9 @@ export async function loadDiscoveryData(supabase: SupabaseLike, groupId: string)
   const signedByObjectKey = new Map((signedPhotoData ?? []).map((photo) => [photo.path, photo.signedUrl]));
   const places: MapPlace[] = groupPlaces.flatMap((groupPlace) => {
     const place = placeById.get(groupPlace.place_id); const stat = statByGroupPlace.get(groupPlace.id); const mark = latestMark.get(groupPlace.id);
-    if (!place || !stat || stat.mark_count < 1 || stat.average_rating === null) return [];
+    if (!place || !stat) return [];
     const cover = photosByGroupPlace.get(groupPlace.id);
-    return [{ id: groupPlace.id, name: place.name, category: groupPlace.primary_category, latitude: Number(place.latitude), longitude: Number(place.longitude), averageRating: Number(stat.average_rating), markCount: Number(stat.mark_count), recommendCount: Number(stat.recommend_count ?? 0), sceneTags: scenesByGroupPlace.get(groupPlace.id) ?? [], city: place.city ?? undefined, district: place.district ?? undefined, address: place.address ?? undefined, cuisineSlugs: cuisineByGroupPlace.get(groupPlace.id) ?? [], pricePerPerson: mark?.price_per_person === null || mark?.price_per_person === undefined ? null : Number(mark.price_per_person), recommendedItems: mark?.recommended_items ?? [], review: mark?.short_review ?? null, lastMarkedAt: mark?.updated_at ?? null, coverPhotoUrl: cover ? signedByObjectKey.get(cover.object_key) ?? null : null }];
+    return [{ id: groupPlace.id, name: place.name, category: groupPlace.primary_category, latitude: Number(place.latitude), longitude: Number(place.longitude), averageRating: Number(stat.average_rating ?? 0), markCount: Number(stat.mark_count ?? 0), recommendCount: Number(stat.recommend_count ?? 0), sceneTags: scenesByGroupPlace.get(groupPlace.id) ?? [], city: place.city ?? undefined, district: place.district ?? undefined, address: place.address ?? undefined, cuisineSlugs: cuisineByGroupPlace.get(groupPlace.id) ?? [], pricePerPerson: mark?.price_per_person === null || mark?.price_per_person === undefined ? null : Number(mark.price_per_person), recommendedItems: mark?.recommended_items ?? [], review: mark?.short_review ?? null, lastMarkedAt: mark?.updated_at ?? null, coverPhotoUrl: cover ? signedByObjectKey.get(cover.object_key) ?? null : null }];
   });
   return { places, geoOptions: [] as GeoOption[] };
 }
