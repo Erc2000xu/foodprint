@@ -1,7 +1,7 @@
 # 食迹 Foodprint｜V1.2 开发交接与验收清单
 
 > 日期：2026-07-28
-> 状态：代码与数据库迁移完成，等待 Preview 与项目负责人验收
+> 状态：已推送 Production，等待项目负责人生产验收
 > 工作分支：`codex/v1-2-discovery-try-list`
 > 对应规格：[V1.2｜发现与去试试](./specs/2026-07-v1-2-discovery-try-list.md)
 
