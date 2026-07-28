@@ -1,5 +1,7 @@
 # 食迹 Foodprint｜生产运行与恢复说明
 
+> 地图故障、Key、白名单、配额和发布后地图验收优先遵循 AMAP_OPERATIONS_RUNBOOK.md；安全、隐私和大陆发布门槛优先遵循 SECURITY_COMPLIANCE_BASELINE.md。
+
 ## 上线前检查
 
 1. Vercel 的 Production、Preview、Development 环境均配置公共 Supabase 变量；Production 另外配置 `SUPABASE_SERVICE_ROLE_KEY`，仅供 Owner 的全量数据导出使用。
