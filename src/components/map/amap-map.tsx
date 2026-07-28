@@ -24,6 +24,7 @@ export type MapPlace = {
   geoEntityIds?: string[];
   geoLabels?: string[];
   coverPhotoUrl?: string | null;
+  savedForLater?: boolean;
 };
 
 const defaultCenter: [number, number] = [116.397428, 39.90923];

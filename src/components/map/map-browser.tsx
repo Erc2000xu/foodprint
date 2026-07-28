@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getAmapBeijingDistricts, searchAmapPoiTips, type AmapDistrict, type AmapPoiCandidate } from "@/lib/amap/poi-client";
 import type { MapPlace } from "@/components/map/amap-map";
 import { StaticMapAdapter } from "@/components/map/map-adapter";
+import { WishlistToggle } from "@/components/discover/wishlist-toggle";
 import { displayAmapAdministrativeLocation } from "@/lib/amap/location-display";
 import { categoryOptions, sceneTagLabels } from "@/lib/mark-options";
 import { priceOptions } from "@/lib/discovery-options";
@@ -37,12 +38,14 @@ function matchesLocation(place: MapPlace, filter?: LocationFilter) {
   return distanceMeters({ latitude: filter.latitude!, longitude: filter.longitude! }, place) <= (filter.kind === "metro_station" ? 1_500 : 3_000);
 }
 
-export function MapBrowser({ places, cuisineOptions }: { places: MapPlace[]; cuisineOptions: readonly CuisineOption[]; geoOptions?: GeoOption[] }) {
+/** The primary Discovery experience: rich recommendation cards with an optional map view. */
+export function DiscoveryBrowser({ places, cuisineOptions }: { places: MapPlace[]; cuisineOptions: readonly CuisineOption[]; geoOptions?: GeoOption[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const state = useMemo(() => searchStateFromParams(new URLSearchParams(params.toString())), [params]);
-  const [mode, setMode] = useState<"list" | "map">("list");
+  const requestedMode = params.get("view") === "map" ? "map" : "list";
+  const [mode, setMode] = useState<"list" | "map">(requestedMode);
   const [draftQuery, setDraftQuery] = useState(state.query ?? "");
   const [mapError, setMapError] = useState("");
   const [origin, setOrigin] = useState<Origin>();
@@ -54,6 +57,8 @@ export function MapBrowser({ places, cuisineOptions }: { places: MapPlace[]; cui
   const [isSearchingAmap, setIsSearchingAmap] = useState(false);
   const [locationFilter, setLocationFilter] = useState<LocationFilter>();
   const cuisineLabelBySlug = useMemo(() => Object.fromEntries(cuisineOptions), [cuisineOptions]) as Record<string, string>;
+
+  useEffect(() => { setMode(requestedMode); }, [requestedMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,7 +82,16 @@ export function MapBrowser({ places, cuisineOptions }: { places: MapPlace[]; cui
 
   const commit = (patch: Partial<SearchState>, options?: { clear?: boolean }) => {
     const next: SearchState = options?.clear ? { ...defaultSearchState, ...patch } : { ...state, ...patch, selectedPlaceId: undefined };
-    const query = searchStateToParams(next).toString();
+    const queryParams = searchStateToParams(next);
+    if (mode === "map") queryParams.set("view", "map");
+    const query = queryParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+  const switchView = (nextMode: "list" | "map") => {
+    setMode(nextMode);
+    const queryParams = new URLSearchParams(params.toString());
+    if (nextMode === "map") queryParams.set("view", "map"); else queryParams.delete("view");
+    const query = queryParams.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
   const submit = async (event: FormEvent) => {
@@ -114,7 +128,7 @@ export function MapBrowser({ places, cuisineOptions }: { places: MapPlace[]; cui
   }, [draftQuery, cuisineOptions, places]);
 
   return <section className="home-explorer" aria-label="找餐厅">
-    <header className="home-explorer__header"><div><p className="eyebrow">北京 · 朋友真实推荐</p><h1>今天想去哪儿吃？</h1><p>从朋友真实推荐里，找到合适的一家。</p></div><div className="map-view-toggle" role="group" aria-label="切换列表或地图"><button className={mode === "list" ? "is-active" : ""} type="button" onClick={() => setMode("list")}>列表</button><button className={mode === "map" ? "is-active" : ""} type="button" onClick={() => setMode("map")}>地图</button></div></header>
+    <header className="home-explorer__header"><div><p className="eyebrow">发现 · 朋友真实推荐</p><h1>今天想去哪儿吃？</h1><p>从朋友真实推荐里，找到合适的一家。</p></div><div className="map-view-toggle" role="group" aria-label="切换发现列表或地图"><button className={mode === "list" ? "is-active" : ""} type="button" onClick={() => switchView("list")}>列表</button><button className={mode === "map" ? "is-active" : ""} type="button" onClick={() => switchView("map")}>地图</button></div></header>
 
     <form className="intent-search" onSubmit={submit}><span aria-hidden="true">⌕</span><input value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} placeholder="搜商圈、地铁站、菜系或餐厅" aria-label="搜索餐厅、菜系或区域" /><button type="submit" disabled={isSearchingAmap}>{isSearchingAmap ? "查找中" : "搜索"}</button><small>商圈和地铁站将从高德实时查询，例如：王府井、粤菜、烤鸭</small></form>
     {(amapSuggestions.length > 0 || amapError) && <div className="amap-search-suggestions" aria-label="高德地点建议"><p>高德地点建议</p>{amapSuggestions.map((candidate) => <button key={candidate.poiId} type="button" onClick={() => selectAmapLocation(candidate)}><span className={`location-tag location-tag--${locationKind(candidate)}`}>{locationKindLabel(locationKind(candidate))}</span><strong>{candidate.name}</strong><small>{candidate.district || candidate.address || "高德地图地点"}</small></button>)}{amapError && <small className="location-note">{amapError}</small>}</div>}
@@ -123,6 +137,6 @@ export function MapBrowser({ places, cuisineOptions }: { places: MapPlace[]; cui
     <div className="intent-actions" aria-label="找餐厅方式"><details><summary>📍 按地点找</summary><div className="intent-menu intent-menu--grouped"><section><b>行政区 · 来自高德</b>{districts.map((district) => <button className={locationFilter?.id === `amap-district-${district.adcode}` ? "is-selected" : ""} key={district.adcode} type="button" onClick={() => selectDistrict(district)}>{district.name}</button>)}{districtError && <small>{districtError}</small>}</section><section><b>商圈 / 地铁 · 来自高德</b><small>在上方搜索“王府井”或“王府井站”，再选择高德建议。</small></section></div></details><details><summary>🍜 按菜系找</summary><div className="intent-menu">{cuisineOptions.map(([slug, label]) => <button className={state.cuisineIds.includes(slug) ? "is-selected" : ""} key={slug} type="button" onClick={() => selectCuisine(slug)}>{label}</button>)}</div></details><details><summary>✨ 找灵感</summary><div className="intent-menu">{["friends_gathering", "date", "afternoon_tea", "late_night"].map((slug) => <button className={state.sceneTagIds.includes(slug) ? "is-selected" : ""} key={slug} type="button" onClick={() => selectScene(slug)}>{sceneTagLabels[slug]}</button>)}</div></details></div>
     {activeSearch && <section className="active-filter-panel" aria-label="筛选条件"><div className="active-filter-panel__controls"><select value={state.priceRange ?? ""} onChange={(event) => commit({ priceRange: event.target.value as SearchState["priceRange"] || undefined })} aria-label="人均"><option value="">全部人均</option>{priceOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={state.minRating ?? ""} onChange={(event) => commit({ minRating: event.target.value === "4.5" ? 4.5 : event.target.value === "4" ? 4 : undefined })} aria-label="评分"><option value="">全部评分</option><option value="4">评分 4+</option><option value="4.5">评分 4.5+</option></select><select value={state.sort} onChange={(event) => { if (event.target.value === "distance") requestNearby(); else commit({ sort: event.target.value as SearchState["sort"] }); }} aria-label="结果排序"><option value="recommended">最值得去</option><option value="recent">最近体验</option><option value="distance">离我最近</option></select></div><div className="active-filter-panel__chips">{locationFilter && <button className={`location-tag location-tag--${locationFilter.kind}`} type="button" onClick={() => setLocationFilter(undefined)}>{locationKindLabel(locationFilter.kind)} · {locationFilter.name} ×</button>}{state.cuisineIds.map((id) => <button key={id} type="button" onClick={() => selectCuisine(id)}>{cuisineLabelBySlug[id] ?? id} ×</button>)}{state.sceneTagIds.map((id) => <button key={id} type="button" onClick={() => selectScene(id)}>{sceneTagLabels[id] ?? id} ×</button>)}</div><div className="result-heading"><strong>{filteredPlaces.length} 家朋友推荐</strong><button className="text-button" type="button" onClick={clearAll}>清除筛选</button></div>{locationMessage && <p className="location-note">{locationMessage}</p>}</section>}
 
-    {mode === "map" ? <section className="v1-static-map" aria-label="当前筛选结果地图"><StaticMapAdapter pins={filteredPlaces} selectedPlaceId={state.selectedPlaceId} onError={reportMapError} /><div><strong>{filteredPlaces.length} 家朋友推荐</strong><button type="button" onClick={() => setMode("list")}>查看列表</button></div>{mapError && <p className="map-status-message">{mapError}</p>}</section> : <section className="home-results">{!activeSearch && <div className="home-results__intro"><p className="eyebrow">朋友最近推荐</p><h2>先从这些值得去的地方开始</h2></div>}{(activeSearch ? filteredPlaces : recentPlaces).length ? <ul className="home-place-list">{(activeSearch ? filteredPlaces : recentPlaces).map((place) => <li key={place.id}><Link href={detailHref(place.id)} className="home-place-card"><div className="home-place-card__photo">{place.coverPhotoUrl ? <img src={place.coverPhotoUrl} alt={`${place.name} 的真实照片`} /> : <span>食迹<br />推荐</span>}</div><div><div className="home-place-card__meta"><span>{place.cuisineSlugs?.map((slug) => cuisineLabelBySlug[slug]).filter(Boolean).slice(0, 1).join(" · ") || categoryLabels[place.category] || "餐饮"}</span>{place.district && <span className="location-tag location-tag--district">行政区 · {displayAmapAdministrativeLocation(place.city, place.district)}</span>}</div><h2>{place.name}</h2><p className="home-place-card__location">{locationFilter?.kind === "metro_station" ? `近 ${locationFilter.name} · ` : ""}{place.pricePerPerson ? `人均 ¥${Math.round(place.pricePerPerson)}` : "人均待补充"}</p><div className="home-place-card__score-line"><b>{place.averageRating.toFixed(1)}</b><span>{place.markCount} 位朋友标记</span></div>{place.sceneTags.length > 0 && <div className="home-place-card__tags">{place.sceneTags.slice(0, 2).map((slug) => <span key={slug}>{sceneTagLabels[slug] ?? slug}</span>)}</div>}{place.recommendedItems?.length ? <p className="home-place-card__recommend">推荐：{place.recommendedItems.slice(0, 2).join("、")}</p> : place.review ? <p className="home-place-card__recommend">{place.review}</p> : null}</div></Link></li>)}</ul> : <div className="empty-state"><strong>{places.length ? "当前条件下暂无朋友推荐" : "共同地图还没有真实标记"}</strong><span>{places.length ? "清除筛选或扩大范围再试试。" : "从添加第一家真实体验开始。"}</span>{places.length ? <button className="text-button" type="button" onClick={clearAll}>清除筛选</button> : <Link className="primary-link" href="/mark">去标记地点</Link>}</div>}</section>}
+    {mode === "map" ? <section className="v1-static-map" aria-label="发现地点的地图视图"><StaticMapAdapter pins={filteredPlaces} selectedPlaceId={state.selectedPlaceId} onError={reportMapError} /><div><strong>{filteredPlaces.length} 家朋友推荐</strong><button type="button" onClick={() => switchView("list")}>查看列表</button></div>{mapError && <p className="map-status-message">{mapError}</p>}</section> : <section className="home-results">{!activeSearch && <div className="home-results__intro"><p className="eyebrow">朋友最近推荐</p><h2>先从这些值得去的地方开始</h2></div>}{(activeSearch ? filteredPlaces : recentPlaces).length ? <ul className="home-place-list">{(activeSearch ? filteredPlaces : recentPlaces).map((place) => <li key={place.id}><div className="home-place-card-wrap"><Link href={detailHref(place.id)} className="home-place-card"><div className="home-place-card__photo">{place.coverPhotoUrl ? <img src={place.coverPhotoUrl} alt={`${place.name} 的真实照片`} /> : <span>食迹<br />推荐</span>}</div><div><div className="home-place-card__meta"><span>{place.cuisineSlugs?.map((slug) => cuisineLabelBySlug[slug]).filter(Boolean).slice(0, 1).join(" · ") || categoryLabels[place.category] || "餐饮"}</span>{place.district && <span className="location-tag location-tag--district">行政区 · {displayAmapAdministrativeLocation(place.city, place.district)}</span>}</div><h2>{place.name}</h2><p className="home-place-card__location">{locationFilter?.kind === "metro_station" ? `近 ${locationFilter.name} · ` : ""}{place.pricePerPerson ? `人均 ¥${Math.round(place.pricePerPerson)}` : "人均待补充"}</p>{place.markCount ? <div className="home-place-card__score-line"><b>{place.averageRating.toFixed(1)}</b><span>{place.markCount} 位朋友标记</span></div> : <div className="home-place-card__score-line"><b>新推荐</b><span>已由成员真实验证</span></div>}{place.sceneTags.length > 0 && <div className="home-place-card__tags">{place.sceneTags.slice(0, 2).map((slug) => <span key={slug}>{sceneTagLabels[slug] ?? slug}</span>)}</div>}{place.recommendedItems?.length ? <p className="home-place-card__recommend">推荐：{place.recommendedItems.slice(0, 2).join("、")}</p> : place.review ? <p className="home-place-card__recommend">{place.review}</p> : null}</div></Link><WishlistToggle groupPlaceId={place.id} initialWanted={Boolean(place.savedForLater)} /></div></li>)}</ul> : <div className="empty-state"><strong>{places.length ? "当前条件下暂无朋友推荐" : "共同地图还没有真实标记"}</strong><span>{places.length ? "清除筛选或扩大范围再试试。" : "从添加第一家真实体验开始。"}</span>{places.length ? <button className="text-button" type="button" onClick={clearAll}>清除筛选</button> : <Link className="primary-link" href="/mark">去标记地点</Link>}</div>}</section>}
   </section>;
 }

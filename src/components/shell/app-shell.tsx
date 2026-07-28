@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 const navigation = [
-  { label: "发现", icon: "/nav-icons/discover.png", href: "/discover" },
+  { label: "发现", icon: "/nav-icons/discover.png", href: "/" },
   { label: "去试试", icon: "/nav-icons/map.png", href: "/try" },
   { label: "记一顿", icon: "/nav-icons/mark.png", href: "/mark", add: true },
   { label: "动态", icon: "/nav-icons/activity.png", href: "/activity" },
@@ -14,7 +14,7 @@ export function AppShell({ children, activeNav = "发现" }: { children: ReactNo
   return (
     <div className="app-shell">
       <header className="app-header">
-        <Link className="brand" href="/discover" aria-label="食迹 Foodprint 首页">
+        <Link className="brand" href="/" aria-label="食迹 Foodprint 首页">
           <Image className="brand__badge" src="/mascot/icon-192.png" width={34} height={34} alt="" priority />
           <span className="brand__name">食迹</span>
         </Link>

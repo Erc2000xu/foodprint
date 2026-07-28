@@ -99,7 +99,7 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
   const { error: discoveryError } = await activeGroup.supabase.rpc("refresh_group_place_discovery_metadata", { p_group_place_id: data[0].group_place_id });
   if (discoveryError) return { error: `真实标记已保存，但检索信息待后台补充：${discoveryError.message}` };
   revalidatePath("/");
-  revalidatePath("/discover");
+  revalidatePath("/");
   revalidatePath(`/place/${data[0].group_place_id}`);
   return { success: "真实标记已保存，地点已加入共同地图。" };
 }

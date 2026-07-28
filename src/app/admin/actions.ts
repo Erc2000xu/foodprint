@@ -95,6 +95,6 @@ export async function completePlaceCuisine(_: ManagementResult, formData: FormDa
   if (error) return { error: error.message };
   revalidatePath("/");
   revalidatePath("/admin");
-  revalidatePath("/discover");
+  revalidatePath("/");
   return { success: "已补充菜系信息。" };
 }

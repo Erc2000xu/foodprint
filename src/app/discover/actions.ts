@@ -14,7 +14,7 @@ export async function toggleWishlistItem(groupPlaceId: string, wanted: boolean):
   if (!user) return { error: "请先登录。" };
   const { error } = await supabase.rpc("set_wishlist_item", { p_group_place_id: parsedId.data, p_wanted: wanted });
   if (error) return { error: error.message };
-  revalidatePath("/discover");
+  revalidatePath("/");
   revalidatePath(`/place/${parsedId.data}`);
   return { wanted };
 }

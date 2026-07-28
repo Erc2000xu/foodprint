@@ -8,7 +8,7 @@
 2. 高德 JS Key 的域名白名单包含生产域名；`AMAP_WEBSERVICE_KEY` 只保存在 Supabase Edge Function Secret。
 3. 按时间顺序执行并提交 `supabase/migrations/`，再确认 Supabase Dashboard 中迁移状态一致。
 4. 访问 `/api/health` 应返回 `status: ok`；未登录访问 `/` 应安全跳转至登录。
-5. 使用 Owner 和普通成员各完成一次：登录、搜索地点、保存标记、照片上传、想去、导出。
+5. 使用 Owner 和普通成员各完成一次：登录、搜索地点、保存标记、照片上传、下回吃、导出。
 6. 在 iPhone Safari 及 Android Chrome 试用 PWA 安装和离线页；离线页只保证应用壳可见，不承诺地图、搜索或私有数据离线可用。
 
 ## 备份与恢复

@@ -55,8 +55,7 @@ export async function resolvePlaceCandidate(candidateIdValue: string, wouldRecom
   });
   if (error) return { error: error.message };
   revalidatePath("/try");
-  revalidatePath("/discover");
-  revalidatePath("/map");
+  revalidatePath("/");
   if (data?.[0]?.group_place_id) revalidatePath(`/place/${data[0].group_place_id}`);
   return { success: wouldRecommend ? "已加入发现。你可以稍后在记一顿补充完整体验。" : "已从去试试移除；这条验证不会公开展示。" };
 }
