@@ -1,6 +1,6 @@
 # P0｜高德连接可靠性与安全基线
 
-> 状态：开发中
+> 状态：已关闭（2026-07-28）
 > 优先级：P0，必须先于所有依赖地点检索的新功能
 > 版本目标：恢复并持续保障当前 Vercel 阶段的地点检索、静态地图和导航相关链路。
 
@@ -94,10 +94,14 @@
 - 是否需要授权某一个 Preview：默认不授权；若需要，必须列出精确地址、验收负责人和移除日期。
 - 当前高德控制台 Key 的生产域名白名单仍需由控制台维护者核验。
 
-## 8. 本次实施记录（待生产验收）
+## 8. 实施与正式验收记录
 
 - 两个 Edge Function 已改为从 `APP_ALLOWED_ORIGINS` Secret 读取精确来源；缺失或错误配置会失败关闭，不会隐式回退到硬编码域名。
 - 函数响应不再把高德 `infocode` 或上游详情发送到浏览器；仅记录不含关键词、坐标、用户 ID 或密钥的匿名 `amap_event`。
 - 搜索和静态地图均提供统一的非技术性错误信息；静态地图新增显式重试入口和列表降级。
 - 移除了未被使用、却可能要求 Vercel 保存 Web Service Key 的 Server Action 调用；该 Key 只保留在 Supabase Edge Function Secret。
-- 尚未关闭：控制台 Secret 写入、两个函数部署、高德域名白名单核验，以及桌面/真机生产验收。完成前本版本保持“开发中/待验收”，不得进入 V1.2。
+- Supabase 已配置精确的 `APP_ALLOWED_ORIGINS`；`amap-poi-search` 与 `amap-static-map` 已于 2026-07-28 部署至 Production 项目。
+- 高德 JavaScript API Key 的生产域名白名单已按运行手册核验；Web Service Key 未进入 Vercel 或浏览器配置。
+- GitHub PR #8 已合入 `main`，Vercel Production 部署 `469272b` 状态为 Ready。
+- 项目负责人已完成并确认正式验收：登录、标记页地点搜索、首页“王府井”地点建议、地图入口与错误降级均符合验收要求。
+- P0 已关闭；V1.2 现在可以在其自身 Spec 明确批准后进入开发。

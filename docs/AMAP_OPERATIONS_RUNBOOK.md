@@ -49,6 +49,13 @@
 4. 在高德控制台确认 JavaScript API Key 的域名白名单至少含 `foodprint-nine.vercel.app`。它与 `APP_ALLOWED_ORIGINS` 是两项独立设置。
 5. 记录函数部署时间、Production URL、允许 Preview（如有）、验收人和结果；不得将 Secret 值或控制台截图中的敏感信息写入仓库。
 
+## P0 发布记录（2026-07-28）
+
+- Production 地址：`https://foodprint-nine.vercel.app`。
+- Edge Function：`amap-poi-search`、`amap-static-map` 已发布；允许来源仅为 Production 与本地开发地址。
+- GitHub PR #8 已合入 `main`；Vercel Production 部署 `469272b` 为 Ready。
+- 项目负责人已确认登录、地点搜索、首页地点建议、地图入口和降级提示通过正式验收。
+
 ## 配额与安全
 
 - 健康检查使用固定测试词，每天不超过 4 次；不可用爬虫模拟全城搜索。
