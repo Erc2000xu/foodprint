@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MapPlace } from "@/components/map/amap-map";
+import { amapFailureMessage } from "@/lib/amap/failure-message";
 
 export function StaticAmapMap({ places, onError }: { places: MapPlace[]; onError?: (error: Error) => void }) {
   const [imageUrl, setImageUrl] = useState("");
   const [error, setError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let objectUrl = "";
@@ -29,7 +31,9 @@ export function StaticAmapMap({ places, onError }: { places: MapPlace[]; onError
       });
       if (cancelled) return;
       if (!response.ok || !response.headers.get("content-type")?.startsWith("image/")) {
-        setError("地图图片暂时无法生成，请使用列表浏览地点。"); onError?.(new Error("static map unavailable"));
+        const payload = await response.json().catch(() => null) as { error?: string; category?: string } | null;
+        const message = payload?.error || amapFailureMessage(payload?.category, "地图图片暂时无法生成，请使用列表浏览地点。");
+        setError(message); onError?.(new Error("static map unavailable"));
         return;
       }
       const data = await response.blob();
@@ -37,11 +41,16 @@ export function StaticAmapMap({ places, onError }: { places: MapPlace[]; onError
       objectUrl = URL.createObjectURL(data);
       setImageUrl(objectUrl);
     };
-    void load();
+    void load().catch(() => {
+      if (!cancelled) {
+        const message = amapFailureMessage("network_failure");
+        setError(message); onError?.(new Error("static map network failure"));
+      }
+    });
     return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [places, onError]);
+  }, [places, onError, retryKey]);
 
-  if (error) return <div className="map-fallback map-fallback--error"><strong>地图暂时不可用</strong><span>{error}</span></div>;
+  if (error) return <div className="map-fallback map-fallback--error"><strong>地图暂时不可用</strong><span>{error}</span><button className="text-button" type="button" onClick={() => { setError(""); setImageUrl(""); setRetryKey((value) => value + 1); }}>重试地图</button></div>;
   if (!imageUrl) return <div className="map-fallback"><strong>正在生成真实地图…</strong><span>正在从高德地图服务获取共同地点底图。</span></div>;
   // This protected Blob URL is created at runtime, so Next's remote image
   // optimizer cannot fetch it and a plain image element is intentional here.

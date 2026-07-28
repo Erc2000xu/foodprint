@@ -1,18 +1,18 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { classifyProviderFailure, corsHeaders as buildCorsHeaders, isAllowedOrigin, isTimeoutError, logAmapEvent, parseAllowedOrigins, type AmapFailureCategory } from "../_shared/amap-reliability.ts";
 
-const appOrigins = new Set(["https://foodprint-nine.vercel.app", "http://localhost:3000"]);
+const allowedOrigins = parseAllowedOrigins(Deno.env.get("APP_ALLOWED_ORIGINS"));
 
 function corsHeaders(origin: string | null) {
-  return {
-    "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
-    "access-control-allow-methods": "POST, OPTIONS",
-    "access-control-allow-origin": origin && appOrigins.has(origin) ? origin : "https://foodprint-nine.vercel.app",
-    "vary": "Origin",
-  };
+  return buildCorsHeaders(origin, allowedOrigins, { methods: "POST, OPTIONS" });
 }
 
 function json(body: Record<string, unknown>, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(origin), "content-type": "application/json; charset=utf-8" } });
+}
+
+function providerMessage(category: AmapFailureCategory) {
+  return category === "provider_auth_failure" ? "地图服务配置需要处理，请稍后再试。" : "地图图片暂时无法生成，请使用列表浏览地点。";
 }
 
 function zoomFor(points: Array<{ longitude: number; latitude: number }>) {
@@ -28,10 +28,14 @@ function zoomFor(points: Array<{ longitude: number; latitude: number }>) {
 }
 
 Deno.serve(async (request) => {
+  const startedAt = Date.now();
   const origin = request.headers.get("origin");
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
+    logAmapEvent({ operation: "static_map", outcome: "failure", durationMs: Date.now() - startedAt, category: "origin_rejected" });
+    return json({ error: "地图服务正在更新，请稍后再试。", category: "origin_rejected" }, 403, origin);
+  }
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders(origin) });
   if (request.method !== "POST") return json({ error: "仅支持 POST 请求。" }, 405, origin);
-  if (origin && !appOrigins.has(origin)) return json({ error: "无效的应用来源。" }, 403, origin);
 
   try {
     const authorization = request.headers.get("authorization");
@@ -40,7 +44,10 @@ Deno.serve(async (request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const amapKey = Deno.env.get("AMAP_WEBSERVICE_KEY");
     if (!authorization || !publishableKey || !supabaseUrl) return json({ error: "请先登录后查看共同地图。" }, 401, origin);
-    if (!amapKey) return json({ error: "地图服务尚未配置。" }, 503, origin);
+    if (!amapKey) {
+      logAmapEvent({ operation: "static_map", outcome: "failure", durationMs: Date.now() - startedAt, category: "provider_auth_failure" });
+      return json({ error: "地图服务配置需要处理，请稍后再试。", category: "provider_auth_failure" }, 503, origin);
+    }
 
     const supabase = createClient(supabaseUrl, publishableKey, { global: { headers: { Authorization: authorization } } });
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -83,12 +90,16 @@ Deno.serve(async (request) => {
     const contentType = upstreamResponse.headers.get("content-type") ?? "";
     if (!upstreamResponse.ok || !contentType.startsWith("image/")) {
       const detail = await upstreamResponse.text().catch(() => "");
-      console.error("AMap static map failed", { status: upstreamResponse.status, detail: detail.slice(0, 300) });
-      return json({ error: "高德静态地图暂时无法生成。" }, 502, origin);
+      const infocode = /"infocode"\s*:\s*"?([\w-]+)"?/.exec(detail)?.[1];
+      const category = classifyProviderFailure(upstreamResponse.status, infocode);
+      logAmapEvent({ operation: "static_map", outcome: "failure", durationMs: Date.now() - startedAt, category, upstreamStatus: upstreamResponse.status, infocode });
+      return json({ error: providerMessage(category), category }, 502, origin);
     }
+    logAmapEvent({ operation: "static_map", outcome: "success", durationMs: Date.now() - startedAt, upstreamStatus: upstreamResponse.status });
     return new Response(upstreamResponse.body, { headers: { ...corsHeaders(origin), "content-type": contentType, "cache-control": "private, max-age=60" } });
   } catch (error) {
-    console.error("AMap static map failed", { message: error instanceof Error ? error.message : "unknown error" });
-    return json({ error: "高德静态地图暂时无法连接。" }, 502, origin);
+    const category = isTimeoutError(error) ? "provider_timeout" : "network_failure";
+    logAmapEvent({ operation: "static_map", outcome: "failure", durationMs: Date.now() - startedAt, category });
+    return json({ error: category === "provider_timeout" ? "地图服务暂时没响应，请稍后再试。" : "网络有点忙，稍后再试。", category }, 502, origin);
   }
 });
