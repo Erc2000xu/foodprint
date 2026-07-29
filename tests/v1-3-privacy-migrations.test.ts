@@ -42,4 +42,10 @@ describe("V1.3 privacy and visit migrations", () => {
     expect(visitsMigration).toContain("opinion.user_id = auth.uid()");
     expect(visitsMigration).toContain("visit.user_id = auth.uid()");
   });
+
+  it("allows V1.3 server-side photo backfill without opening photo metadata updates", () => {
+    expect(visitsMigration).toContain("create or replace function public.enforce_photo_rules()");
+    expect(visitsMigration).toContain("new.visit_record_id is distinct from old.visit_record_id");
+    expect(visitsMigration).toContain("current_user <> 'postgres'");
+  });
 });
