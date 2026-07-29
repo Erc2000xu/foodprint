@@ -126,9 +126,11 @@ begin
       or new.height is distinct from old.height
       or new.size_bytes is distinct from old.size_bytes
       or new.sort_order is distinct from old.sort_order
-      or old.deleted_at is not null
-      or new.deleted_at is null then
+      or old.deleted_at is not null then
       raise exception 'photos can only be soft-deleted or server-governed';
+    end if;
+    if new.deleted_at is distinct from old.deleted_at and new.deleted_at is null then
+      raise exception 'a deleted photo cannot be restored';
     end if;
     if (new.visit_record_id is distinct from old.visit_record_id
         or new.hidden_at is distinct from old.hidden_at
