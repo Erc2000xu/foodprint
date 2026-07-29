@@ -47,5 +47,6 @@ describe("V1.3 privacy and visit migrations", () => {
     expect(visitsMigration).toContain("create or replace function public.enforce_photo_rules()");
     expect(visitsMigration).toContain("new.visit_record_id is distinct from old.visit_record_id");
     expect(visitsMigration).toContain("current_user <> 'postgres'");
+    expect(visitsMigration).toContain("new.deleted_at is distinct from old.deleted_at and new.deleted_at is null");
   });
 });
