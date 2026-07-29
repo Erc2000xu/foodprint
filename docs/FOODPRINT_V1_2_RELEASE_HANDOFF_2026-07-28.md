@@ -1,7 +1,7 @@
 # 食迹 Foodprint｜V1.2 发布交接
 
 > 发布提交：`30ee8da`；日期：2026-07-28
-> 状态：已推送 `main`，等待 Production 人工验收
+> 状态：Production 人工验收已完成；等待自动化测试运行证据后关闭
 > 对应规格：[V1.2｜发现与去试试](./specs/2026-07-v1-2-discovery-try-list.md)
 
 ## 已发布范围
@@ -34,4 +34,4 @@
 
 若发现发布问题，先在 Vercel 将 Production 回退到 `07f0176` 的前一版本。数据库 migration 与已有候选记录保留，不删除；后续仅通过新的前向 migration 修复。
 
-项目负责人完成上述 Production 验收后，将本文件、V1.2 Spec 和路线图状态从“待验收”更新为“已关闭”。
+项目负责人已于 2026-07-29 完成上述 Production 验收。待在可运行测试 worker 的本机或 CI 环境取得 `npm test` 的完整结果后，将本文件、V1.2 Spec 和路线图状态更新为“已关闭”。

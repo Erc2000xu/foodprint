@@ -2,18 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { sceneTags } from "@/lib/mark-options";
 import { cuisineOptions } from "@/lib/discovery-options";
 import { createClient } from "@/lib/supabase/server";
 
 export type PoiLookup = { error?: string; found?: boolean };
 export type MarkResult = { error?: string; success?: string };
+export type VisitResult = { error?: string; success?: string; warning?: string };
 
-const rating = z.coerce.number().min(1).max(5).refine((value) => Number.isInteger(value * 2), "评分必须以 0.5 为步进。");
-const optionalRating = z.preprocess((value) => value === "" || value === null ? undefined : value, rating.optional());
-const optionalDate = z.preprocess((value) => value === "" || value === null ? undefined : value, z.string().date().optional());
-const optionalRevisit = z.preprocess((value) => value === "" || value === null ? undefined : value, z.enum(["yes", "maybe", "no"]).optional());
-const sceneTagSlugs = sceneTags.map(([slug]) => slug) as [string, ...string[]];
 const cuisineSlugs = cuisineOptions.map(([slug]) => slug) as [string, ...string[]];
 
 async function getActiveGroupId() {
@@ -43,22 +38,23 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     poi_id: z.string().trim().min(1).max(160), name: z.string().trim().min(1).max(160), branch_name: z.string().trim().max(100).optional(),
     address: z.string().trim().max(300).optional(), city: z.string().trim().max(80).optional(), district: z.string().trim().max(80).optional(),
     latitude: z.coerce.number().min(-90).max(90), longitude: z.coerce.number().min(-180).max(180), primary_category: z.enum(["restaurant", "cafe", "drinks", "bar", "bakery_dessert", "street_food", "other_food_drink"]),
-    overall_rating: rating, quality_rating: optionalRating, value_rating: optionalRating, environment_rating: optionalRating, service_rating: optionalRating, uniqueness_rating: optionalRating,
-    would_recommend: z.enum(["true", "false"]), would_revisit: optionalRevisit, first_visited_on: optionalDate, last_visited_on: optionalDate,
-    short_review: z.string().trim().max(1000).optional(), recommended_items: z.string().max(400).optional(), price_per_person: z.preprocess((value) => value === "" ? undefined : value, z.coerce.number().min(0).max(100000).optional()), attested: z.literal("on"),
-    scene_tags: z.array(z.enum(sceneTagSlugs)).max(sceneTagSlugs.length),
+    strength: z.coerce.number().int().min(1).max(3), opinion_tags: z.array(z.enum(["tasty", "comfortable", "good_for_chat", "good_value"])).min(1).max(2), visited_on: z.string().date(),
+    note: z.string().trim().max(1000).optional(), dishes: z.string().max(400).optional(), anonymous: z.literal("on").optional(), attested: z.literal("on"),
     cuisine_slug: z.enum(cuisineSlugs),
-  }).safeParse({ ...Object.fromEntries(formData), scene_tags: formData.getAll("scene_tags") });
+  }).safeParse({ ...Object.fromEntries(formData), opinion_tags: formData.getAll("opinion_tags") });
   if (!fields.success) return { error: fields.error.issues[0]?.message ?? "请检查填写内容。" };
   const value = fields.data;
+  const photos = formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0);
+  const photoDimensions = formData.getAll("photo_dimensions").map((item) => typeof item === "string" ? /^([1-9]\d{0,4})x([1-9]\d{0,4})$/.exec(item) : null);
+  if (photos.length > 9) return { error: "单次最多上传 9 张照片。" };
+  if (photos.some((photo) => photo.type !== "image/webp" || photo.size > 1_572_864)) return { error: "照片需要是 1.5MB 以内的 WebP 图片。" };
   const { data, error } = await activeGroup.supabase.rpc("save_place_mark", {
     p_group_id: activeGroup.groupId, p_source_provider: "amap", p_source_poi_id: value.poi_id, p_name: value.name, p_branch_name: value.branch_name ?? null,
     p_address: value.address ?? null, p_city: value.city ?? null, p_district: value.district ?? null, p_latitude: value.latitude, p_longitude: value.longitude,
-    p_coordinate_system: "GCJ-02", p_primary_category: value.primary_category, p_overall_rating: value.overall_rating, p_would_recommend: value.would_recommend === "true",
-    p_experience_attested: true, p_first_visited_on: value.first_visited_on || null, p_last_visited_on: value.last_visited_on || null, p_short_review: value.short_review ?? null,
-    p_recommended_items: (value.recommended_items ?? "").split(/[,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 12), p_price_per_person: value.price_per_person ?? null,
-    p_quality_rating: value.quality_rating ?? null, p_value_rating: value.value_rating ?? null, p_environment_rating: value.environment_rating ?? null,
-    p_service_rating: value.service_rating ?? null, p_uniqueness_rating: value.uniqueness_rating ?? null, p_would_revisit: value.would_revisit ?? null,
+    p_coordinate_system: "GCJ-02", p_primary_category: value.primary_category, p_overall_rating: [3, 4, 5][value.strength - 1], p_would_recommend: true,
+    p_experience_attested: true, p_first_visited_on: value.visited_on, p_last_visited_on: value.visited_on, p_short_review: value.note ?? null,
+    p_recommended_items: (value.dishes ?? "").split(/[,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 12), p_price_per_person: null,
+    p_quality_rating: null, p_value_rating: null, p_environment_rating: null, p_service_rating: null, p_uniqueness_rating: null, p_would_revisit: null,
   });
   if (error || !data?.[0]?.mark_id) return { error: error?.message ?? "保存标记失败。" };
   const { error: cuisineError } = await activeGroup.supabase.rpc("set_group_place_cuisines", {
@@ -66,30 +62,27 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     p_cuisine_slugs: [value.cuisine_slug],
   });
   if (cuisineError) return { error: "真实标记已保存，但菜系暂未保存：" + cuisineError.message };
-  const { error: sceneTagError } = await activeGroup.supabase.rpc("set_place_mark_scene_tags", {
-    p_mark_id: data[0].mark_id,
-    p_scene_tag_slugs: value.scene_tags,
+  const { data: visitData, error: visitError } = await activeGroup.supabase.rpc("record_place_visit", {
+    p_group_place_id: data[0].group_place_id, p_visited_on: value.visited_on, p_opinion_changed: true, p_strength: value.strength,
+    p_tags: value.opinion_tags, p_note: value.note ?? null, p_dishes: (value.dishes ?? "").split(/[,，]/).map((dish) => dish.trim()).filter(Boolean).slice(0, 12), p_is_anonymous: value.anonymous === "on",
   });
-  if (sceneTagError) return { error: `真实标记已保存，但场景标签暂未保存：${sceneTagError.message}` };
-  const photos = formData.getAll("photos").filter((value): value is File => value instanceof File && value.size > 0);
-  const photoDimensions = formData.getAll("photo_dimensions").map((value) => typeof value === "string" ? /^([1-9]\d{0,4})x([1-9]\d{0,4})$/.exec(value) : null);
-  if (photos.length > 9) return { error: "真实标记已保存，但单次最多上传 9 张照片。" };
+  if (visitError || !visitData?.[0]?.visit_record_id) return { error: `地点已收录，但这顿饭暂未保存：${visitError?.message ?? "请稍后重试。"}` };
+  const visitRecordId = visitData[0].visit_record_id as string;
   if (photos.length) {
-    const { count, error: countError } = await activeGroup.supabase.from("photos").select("id", { count: "exact", head: true }).eq("place_mark_id", data[0].mark_id).is("deleted_at", null);
+    const { count, error: countError } = await activeGroup.supabase.from("photos").select("id", { count: "exact", head: true }).eq("visit_record_id", visitRecordId).is("deleted_at", null);
     if (countError) return { error: `真实标记已保存，但无法读取已有照片：${countError.message}` };
-    if ((count ?? 0) + photos.length > 9) return { error: `真实标记已保存；该条标记已有 ${count ?? 0} 张照片，最多保留 9 张。` };
+    if ((count ?? 0) + photos.length > 9) return { error: `这顿饭已保存；该条记录已有 ${count ?? 0} 张照片，最多保留 9 张。` };
   }
   for (const [sortOrder, photo] of photos.entries()) {
-    if (photo.type !== "image/webp" || photo.size > 1_572_864) return { error: "真实标记已保存，但照片格式或大小不符合要求。" };
     const dimensions = photoDimensions[sortOrder];
     const width = dimensions ? Number(dimensions[1]) : null;
     const height = dimensions ? Number(dimensions[2]) : null;
-    const objectKey = `groups/${activeGroup.groupId}/users/${activeGroup.userId}/marks/${data[0].mark_id}/${crypto.randomUUID()}.webp`;
+    const objectKey = `groups/${activeGroup.groupId}/users/${activeGroup.userId}/visits/${visitRecordId}/${crypto.randomUUID()}.webp`;
     const { error: uploadError } = await activeGroup.supabase.storage.from("place-photos").upload(objectKey, photo, { contentType: "image/webp", upsert: false });
     if (uploadError) return { error: `真实标记已保存，但第 ${sortOrder + 1} 张照片上传失败：${uploadError.message}` };
     const { error: photoError } = await activeGroup.supabase.from("photos").insert({
       group_id: activeGroup.groupId, group_place_id: data[0].group_place_id, user_id: activeGroup.userId,
-      place_mark_id: data[0].mark_id, storage_provider: "supabase", object_key: objectKey, width, height, size_bytes: photo.size, sort_order: sortOrder,
+      visit_record_id: visitRecordId, storage_provider: "supabase", object_key: objectKey, width, height, size_bytes: photo.size, sort_order: sortOrder,
     });
     if (photoError) {
       await activeGroup.supabase.storage.from("place-photos").remove([objectKey]);
@@ -101,5 +94,71 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
   revalidatePath("/");
   revalidatePath("/");
   revalidatePath(`/place/${data[0].group_place_id}`);
-  return { success: "真实标记已保存，地点已加入共同地图。" };
+  return { success: "第一顿已记下，地点已加入共同地图。" };
+}
+
+export async function recordPlaceVisit(_: VisitResult, formData: FormData): Promise<VisitResult> {
+  const fields = z.object({
+    group_place_id: z.string().uuid(),
+    visited_on: z.string().date(),
+    opinion_changed: z.enum(["true", "false"]),
+    strength: z.preprocess((value) => value === "" || value === null ? undefined : value, z.coerce.number().int().min(1).max(3).optional()),
+    tags: z.array(z.enum(["tasty", "comfortable", "good_for_chat", "good_value"])).max(2),
+    note: z.string().trim().max(1000).optional(),
+    dishes: z.string().max(400).optional(),
+    anonymous: z.literal("on").optional(),
+  }).safeParse({ ...Object.fromEntries(formData), tags: formData.getAll("tags") });
+  if (!fields.success) return { error: fields.error.issues[0]?.message ?? "请检查这顿饭的内容。" };
+
+  const value = fields.data;
+  const photos = formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0);
+  const photoDimensions = formData.getAll("photo_dimensions").map((item) => typeof item === "string" ? /^([1-9]\d{0,4})x([1-9]\d{0,4})$/.exec(item) : null);
+  if (photos.length > 9) return { error: "单次最多上传 9 张照片。" };
+  if (photos.some((photo) => photo.type !== "image/webp" || photo.size > 1_572_864)) return { error: "照片需要是 1.5MB 以内的 WebP 图片。" };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("record_place_visit", {
+    p_group_place_id: value.group_place_id,
+    p_visited_on: value.visited_on,
+    p_opinion_changed: value.opinion_changed === "true",
+    p_strength: value.strength ?? null,
+    p_tags: value.tags,
+    p_note: value.note ?? null,
+    p_dishes: (value.dishes ?? "").split(/[,，]/).map((dish) => dish.trim()).filter(Boolean).slice(0, 12),
+    p_is_anonymous: value.anonymous === "on",
+  });
+  if (error || !data?.[0]?.visit_record_id) return { error: error?.message ?? "这顿饭暂时没有保存成功。" };
+  const visitRecordId = data[0].visit_record_id as string;
+  if (photos.length) {
+    const [{ data: groupPlace }, { data: { user } }] = await Promise.all([
+      supabase.from("group_places").select("group_id").eq("id", value.group_place_id).maybeSingle(),
+      supabase.auth.getUser(),
+    ]);
+    if (!groupPlace || !user) return { success: "这顿饭已记下，地点时间线也更新了。", warning: "照片暂未上传：无法确认上传权限。" };
+    for (const [sortOrder, photo] of photos.entries()) {
+      const dimensions = photoDimensions[sortOrder];
+      const objectKey = `groups/${groupPlace.group_id}/users/${user.id}/visits/${visitRecordId}/${crypto.randomUUID()}.webp`;
+      const { error: uploadError } = await supabase.storage.from("place-photos").upload(objectKey, photo, { contentType: "image/webp", upsert: false });
+      if (uploadError) return { success: "这顿饭已记下，地点时间线也更新了。", warning: `第 ${sortOrder + 1} 张照片未上传：${uploadError.message}` };
+      const { error: photoError } = await supabase.from("photos").insert({
+        group_id: groupPlace.group_id,
+        group_place_id: value.group_place_id,
+        user_id: user.id,
+        visit_record_id: visitRecordId,
+        storage_provider: "supabase",
+        object_key: objectKey,
+        width: dimensions ? Number(dimensions[1]) : null,
+        height: dimensions ? Number(dimensions[2]) : null,
+        size_bytes: photo.size,
+        sort_order: sortOrder,
+      });
+      if (photoError) {
+        await supabase.storage.from("place-photos").remove([objectKey]);
+        return { success: "这顿饭已记下，地点时间线也更新了。", warning: `第 ${sortOrder + 1} 张照片未登记：${photoError.message}` };
+      }
+    }
+  }
+  revalidatePath("/");
+  revalidatePath("/activity");
+  revalidatePath(`/place/${value.group_place_id}`);
+  return { success: "这顿饭已记下，地点时间线也更新了。" };
 }

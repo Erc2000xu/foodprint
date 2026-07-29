@@ -4,6 +4,7 @@ import { InvitationList, type InvitationSummary } from "@/components/admin/invit
 import { MemberRoleControl } from "@/components/admin/member-role-control";
 import { MemberStatusButton } from "@/components/admin/member-status-button";
 import { DataExportPanel } from "@/components/admin/data-export-panel";
+import { LeaveGroupButton } from "@/components/admin/leave-group-button";
 import { PersonalPlaceLists, type PersonalPlace } from "@/components/admin/personal-place-lists";
 import { DiscoveryBackfill, type DiscoveryBackfillPlace } from "@/components/admin/discovery-backfill";
 import { InstallGuide } from "@/components/pwa/install-guide";
@@ -44,14 +45,14 @@ export default async function AdminPage() {
   const isOwner = membership.role === "owner";
   const isManager = isOwner || membership.role === "admin";
   const { data: group } = await supabase.from("groups").select("id, name").eq("id", membership.group_id).single();
-  const { data: members } = isManager
+  const { data: members } = isOwner
     ? await supabase.rpc("list_group_members_for_management", { p_group_id: membership.group_id })
     : { data: [] };
   const { data: groupPlaces } = await supabase.from("group_places").select("id, place_id").eq("group_id", membership.group_id).eq("status", "active");
   const groupPlaceIds = groupPlaces?.map((place) => place.id) ?? [];
   const placeIds = groupPlaces?.map((place) => place.place_id) ?? [];
   const [{ data: ownMarks }, { data: wishlistItems }, { data: places }, { data: cuisines }, { data: photos }] = await Promise.all([
-    groupPlaceIds.length ? supabase.from("place_marks").select("group_place_id, overall_rating").eq("user_id", user.id).in("group_place_id", groupPlaceIds).is("deleted_at", null).order("updated_at", { ascending: false }) : Promise.resolve({ data: [] }),
+    groupPlaceIds.length ? supabase.from("place_marks").select("group_place_id").eq("user_id", user.id).in("group_place_id", groupPlaceIds).is("deleted_at", null).order("updated_at", { ascending: false }) : Promise.resolve({ data: [] }),
     groupPlaceIds.length ? supabase.from("wishlist_items").select("group_place_id").eq("user_id", user.id).in("group_place_id", groupPlaceIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
     placeIds.length ? supabase.from("places").select("id, name, address, city, district").in("id", placeIds) : Promise.resolve({ data: [] }),
     groupPlaceIds.length ? supabase.from("place_cuisines").select("group_place_id, cuisine_slug").in("group_place_id", groupPlaceIds) : Promise.resolve({ data: [] }),
@@ -59,13 +60,13 @@ export default async function AdminPage() {
   ]);
   const groupPlaceById = new Map((groupPlaces ?? []).map((place) => [place.id, place]));
   const placeById = new Map((places ?? []).map((place) => [place.id, place]));
-  const toPersonalPlace = (groupPlaceId: string, rating?: number): PersonalPlace | undefined => {
+  const toPersonalPlace = (groupPlaceId: string): PersonalPlace | undefined => {
     const groupPlace = groupPlaceById.get(groupPlaceId);
     const place = groupPlace && placeById.get(groupPlace.place_id);
-    return place ? { groupPlaceId, name: place.name, address: place.address || [place.city, place.district].filter(Boolean).join(" · "), rating } : undefined;
+    return place ? { groupPlaceId, name: place.name, address: place.address || [place.city, place.district].filter(Boolean).join(" · ") } : undefined;
   };
   const personalMarks = (ownMarks ?? []).flatMap((mark) => {
-    const place = toPersonalPlace(mark.group_place_id, Number(mark.overall_rating));
+    const place = toPersonalPlace(mark.group_place_id);
     return place ? [place] : [];
   });
   const personalWishlist = (wishlistItems ?? []).flatMap((item) => {
@@ -100,5 +101,5 @@ export default async function AdminPage() {
     };
   });
 
-  return <AppShell activeNav="我的"><section className="admin-page"><header><p className="eyebrow">{group?.name}</p><h1>我的与成员管理</h1><p>当前角色：{roleLabel(membership.role as MemberDirectoryRow["role"])}</p></header><PersonalPlaceLists marks={personalMarks} wishlist={personalWishlist} /><section className="admin-card"><h2>安装食迹</h2><InstallGuide /></section>{isManager && <DiscoveryBackfill places={incompleteDiscoveryPlaces} />}{isManager && group && <><section className="admin-card"><h2>邀请朋友</h2><p>新成员会先验证邮箱，再通过邀请链接加入共同地图。</p><InviteForm groupId={group.id} /></section><section className="admin-card"><h2>邀请记录</h2><p>仅显示仍可使用的邀请。链接可直接入组，请勿公开转发；用完、撤销或过期的记录会自动隐藏，并保留在后台历史中。</p><InvitationList invitations={invitationSummaries} /></section></>}{isManager && <section className="admin-card"><h2>成员</h2><p className="member-role-explainer">角色说明：<b>Owner</b> 可管理成员角色、状态和全组导出；<b>Admin</b> 可管理邀请并查看成员目录；<b>Member</b> 可记录和浏览共同地图，不能查看成员目录或邮箱。</p><ol className="member-join-steps"><li><b>分享邀请</b><span>Owner 或 Admin 创建有效邀请链接，并私下发送给朋友。</span></li><li><b>创建账号</b><span>朋友打开链接，填写昵称、邮箱和至少 8 位密码。</span></li><li><b>验证邮箱</b><span>朋友打开验证邮件中的链接；系统验证账号并返回原邀请。</span></li><li><b>自动加入</b><span>验证成功后系统自动完成入组并进入食迹；之后再次使用时，可用该邮箱和密码登录。</span></li></ol><ul className="member-list">{((members ?? []) as MemberDirectoryRow[]).map((member) => { const canManageStatus = isOwner && member.role !== "owner" && (member.status === "active" || member.status === "suspended"); const canManageRole = isOwner && member.role !== "owner" && member.status === "active"; return <li key={member.user_id}><div className="member-card__identity"><span className="member-avatar">{member.display_name.slice(0, 1) || "食"}</span><span className="member-list__identity"><strong>{member.display_name || "未命名用户"}</strong><small className="member-email">{member.email}</small><small>{roleLabel(member.role)} · {statusLabel(member.status)}</small></span></div>{(canManageRole || canManageStatus) && <div className="member-card__actions">{canManageRole && <MemberRoleControl groupId={membership.group_id} userId={member.user_id} role={member.role as "admin" | "member"} />}{canManageStatus && <MemberStatusButton groupId={membership.group_id} userId={member.user_id} status={member.status as "active" | "suspended"} />}</div>}</li>; })}</ul></section>}<DataExportPanel isOwner={isOwner} /></section></AppShell>;
+  return <AppShell activeNav="我的"><section className="admin-page"><header><p className="eyebrow">{group?.name}</p><h1>我的与成员管理</h1><p>当前角色：{roleLabel(membership.role as MemberDirectoryRow["role"])}</p></header><PersonalPlaceLists marks={personalMarks} wishlist={personalWishlist} /><section className="admin-card"><h2>安装食迹</h2><InstallGuide /></section>{isManager && <DiscoveryBackfill places={incompleteDiscoveryPlaces} />}{isManager && group && <><section className="admin-card"><h2>邀请朋友</h2><p>新成员会先验证邮箱，再通过邀请链接加入共同地图。</p><InviteForm groupId={group.id} /></section><section className="admin-card"><h2>邀请记录</h2><p>仅显示仍可使用的邀请。链接可直接入组，请勿公开转发；用完、撤销或过期的记录会自动隐藏，并保留在后台历史中。</p><InvitationList invitations={invitationSummaries} /></section></>}{isOwner && <section className="admin-card"><h2>成员</h2><p className="member-role-explainer">角色说明：<b>Owner</b> 可查看成员邮箱、管理成员角色与状态并导出全组数据；<b>Admin</b> 仅可管理邀请；<b>Member</b> 可记录和浏览共同地图。除 Owner 专用成员管理区外，产品只显示成员昵称。</p><ol className="member-join-steps"><li><b>分享邀请</b><span>Owner 或 Admin 创建有效邀请链接，并私下发送给朋友。</span></li><li><b>创建账号</b><span>朋友打开链接，填写昵称、邮箱和至少 8 位密码。</span></li><li><b>验证邮箱</b><span>朋友打开验证邮件中的链接；系统验证账号并返回原邀请。</span></li><li><b>自动加入</b><span>验证成功后系统自动完成入组并进入食迹；之后再次使用时，可用该邮箱和密码登录。</span></li></ol><ul className="member-list">{((members ?? []) as MemberDirectoryRow[]).map((member) => { const canManageStatus = member.role !== "owner" && (member.status === "active" || member.status === "suspended"); const canManageRole = member.role !== "owner" && member.status === "active"; return <li key={member.user_id}><div className="member-card__identity"><span className="member-avatar">{member.display_name.slice(0, 1) || "食"}</span><span className="member-list__identity"><strong>{member.display_name || "未命名用户"}</strong><small className="member-email">{member.email}</small><small>{roleLabel(member.role)} · {statusLabel(member.status)}</small></span></div>{(canManageRole || canManageStatus) && <div className="member-card__actions">{canManageRole && <MemberRoleControl groupId={membership.group_id} userId={member.user_id} role={member.role as "admin" | "member"} />}{canManageStatus && <MemberStatusButton groupId={membership.group_id} userId={member.user_id} status={member.status as "active" | "suspended"} />}</div>}</li>; })}</ul></section>}<DataExportPanel isOwner={isOwner} /><LeaveGroupButton groupId={membership.group_id} isOwner={isOwner} /></section></AppShell>;
 }

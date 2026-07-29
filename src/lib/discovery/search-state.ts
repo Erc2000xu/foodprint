@@ -12,11 +12,10 @@ export type SearchState = {
   cuisineIds: string[];
   sceneTagIds: string[];
   priceRange?: PriceRange;
-  minRating?: 4 | 4.5;
   wishlistOnly?: boolean;
   sort: DiscoverySort;
   selectedPlaceId?: string;
-  quickFilter?: "coffee" | "date" | "rating";
+  quickFilter?: "coffee" | "date";
 };
 
 export const defaultSearchState: SearchState = {
@@ -35,7 +34,6 @@ function split(value: string | null) {
 }
 
 export function searchStateFromParams(params: URLSearchParams): SearchState {
-  const minRating = params.get("rating");
   const price = params.get("price");
   const sort = params.get("sort");
   const quick = params.get("quick");
@@ -46,10 +44,9 @@ export function searchStateFromParams(params: URLSearchParams): SearchState {
     cuisineIds: split(params.get("cuisine")),
     sceneTagIds: split(params.get("scene")),
     priceRange: price && validPrices.has(price as PriceRange) ? price as PriceRange : undefined,
-    minRating: minRating === "4.5" ? 4.5 : minRating === "4" ? 4 : undefined,
     sort: sort && validSorts.has(sort as DiscoverySort) ? sort as DiscoverySort : "recommended",
     selectedPlaceId: params.get("place")?.trim() || undefined,
-    quickFilter: quick === "coffee" || quick === "date" || quick === "rating" ? quick : undefined,
+    quickFilter: quick === "coffee" || quick === "date" ? quick : undefined,
   };
 }
 
@@ -60,7 +57,6 @@ export function searchStateToParams(state: SearchState) {
   if (state.cuisineIds.length) params.set("cuisine", state.cuisineIds.join(","));
   if (state.sceneTagIds.length) params.set("scene", state.sceneTagIds.join(","));
   if (state.priceRange) params.set("price", state.priceRange);
-  if (state.minRating) params.set("rating", String(state.minRating));
   if (state.sort !== "recommended") params.set("sort", state.sort);
   if (state.selectedPlaceId) params.set("place", state.selectedPlaceId);
   if (state.quickFilter) params.set("quick", state.quickFilter);
@@ -68,7 +64,7 @@ export function searchStateToParams(state: SearchState) {
 }
 
 export function hasActiveSearch(state: SearchState) {
-  return Boolean(state.query || state.areaIds.length || state.cuisineIds.length || state.sceneTagIds.length || state.priceRange || state.minRating || state.quickFilter);
+  return Boolean(state.query || state.areaIds.length || state.cuisineIds.length || state.sceneTagIds.length || state.priceRange || state.quickFilter);
 }
 
 function markedAt(place: MapPlace) {
@@ -80,12 +76,10 @@ export function filterDiscoveryPlaces(places: MapPlace[], state: SearchState, cu
   return places.filter((place) => {
     if (state.quickFilter === "coffee" && place.category !== "cafe" && !place.cuisineSlugs?.includes("coffee_tea")) return false;
     if (state.quickFilter === "date" && !place.sceneTags.includes("date")) return false;
-    if (state.quickFilter === "rating" && place.averageRating < 4) return false;
     if (state.areaIds.length && !state.areaIds.some((id) => place.geoEntityIds?.includes(id))) return false;
     if (state.cuisineIds.length && !state.cuisineIds.some((id) => place.cuisineSlugs?.includes(id))) return false;
     if (state.sceneTagIds.length && !state.sceneTagIds.some((id) => place.sceneTags.includes(id))) return false;
     if (state.priceRange && priceRangeFor(place.pricePerPerson) !== state.priceRange) return false;
-    if (state.minRating && place.averageRating < state.minRating) return false;
     if (!needle) return true;
     const searchable = [
       place.name, place.city, place.district, place.address, ...(place.geoLabels ?? []),
@@ -97,6 +91,6 @@ export function filterDiscoveryPlaces(places: MapPlace[], state: SearchState, cu
     if (state.sort === "recent") return markedAt(right) - markedAt(left);
     // Location is intentionally not sorted here: exact user coordinates never
     // enter shared URLs. A future map adapter can provide an in-memory origin.
-    return right.averageRating - left.averageRating || (right.recommendCount ?? 0) - (left.recommendCount ?? 0) || right.markCount - left.markCount || markedAt(right) - markedAt(left);
+    return (right.bowlStrength ?? 0) - (left.bowlStrength ?? 0) || (right.recommendCount ?? 0) - (left.recommendCount ?? 0) || right.markCount - left.markCount || markedAt(right) - markedAt(left);
   });
 }

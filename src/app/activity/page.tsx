@@ -1,7 +1,12 @@
 import Link from "next/link";
+/* eslint-disable @next/next/no-img-element */
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
 import { createClient } from "@/lib/supabase/server";
+
+type VisitFeedItem = { visit_record_id: string; group_place_id: string; place_name: string; visited_on: string | null; strength: number; note: string | null; dishes: string[]; created_at: string; display_name: string };
+type VisitPhoto = { id: string; visit_record_id: string; object_key: string };
+const bowlLabels = ["", "值得去", "想再去", "会专门去"];
 
 function relativeTime(value: string) {
   const minutes = Math.max(1, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
@@ -18,18 +23,18 @@ export default async function ActivityPage() {
   const { data: memberships } = await supabase.from("group_members").select("group_id").eq("user_id", user.id).eq("status", "active").limit(1);
   const groupId = memberships?.[0]?.group_id;
   if (!groupId) redirect("/admin");
-  const { data: groupPlaces } = await supabase.from("group_places").select("id, place_id").eq("group_id", groupId).eq("status", "active");
-  const groupPlaceIds = groupPlaces?.map((place) => place.id) ?? [];
-  const placeIds = groupPlaces?.map((place) => place.place_id) ?? [];
-  const [{ data: marks }, { data: places }] = await Promise.all([
-    groupPlaceIds.length ? supabase.from("place_marks").select("id, group_place_id, user_id, overall_rating, would_recommend, short_review, recommended_items, updated_at").in("group_place_id", groupPlaceIds).is("deleted_at", null).order("updated_at", { ascending: false }).limit(30) : Promise.resolve({ data: [] }),
-    placeIds.length ? supabase.from("places").select("id, name").in("id", placeIds) : Promise.resolve({ data: [] }),
-  ]);
-  const userIds = [...new Set((marks ?? []).map((mark) => mark.user_id))];
-  const { data: profiles } = userIds.length ? await supabase.from("profiles").select("id, display_name").in("id", userIds) : { data: [] };
-  const placeIdByGroupPlaceId = new Map((groupPlaces ?? []).map((place) => [place.id, place.place_id]));
-  const placeById = new Map((places ?? []).map((place) => [place.id, place]));
-  const profileById = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+  const { data: feed } = await supabase.rpc("list_group_visit_feed", { p_group_id: groupId });
+  const visits = (feed ?? []) as VisitFeedItem[];
+  const visitIds = visits.map((visit) => visit.visit_record_id);
+  const { data: photos } = visitIds.length
+    ? await supabase.from("photos").select("id, visit_record_id, object_key").in("visit_record_id", visitIds).is("deleted_at", null).is("hidden_at", null).order("sort_order")
+    : { data: [] };
+  const signedPhotos = await Promise.all(((photos ?? []) as VisitPhoto[]).map(async (photo) => {
+    const { data } = await supabase.storage.from("place-photos").createSignedUrl(photo.object_key, 60 * 15);
+    return data?.signedUrl ? { ...photo, signedUrl: data.signedUrl } : null;
+  }));
+  const photosByVisit = new Map<string, string[]>();
+  signedPhotos.forEach((photo) => { if (photo) photosByVisit.set(photo.visit_record_id, [...(photosByVisit.get(photo.visit_record_id) ?? []), photo.signedUrl]); });
 
-  return <AppShell activeNav="动态"><section className="activity-page"><p className="eyebrow">动态</p><h1>朋友最近留下的体验</h1><p className="activity-intro">每一条都是成员独立的真实体验，不合成为统一结论。</p>{marks?.length ? <ol className="activity-list">{marks.map((mark) => { const place = placeById.get(placeIdByGroupPlaceId.get(mark.group_place_id) ?? ""); const profile = profileById.get(mark.user_id); return <li key={mark.id}><span className="member-avatar">{profile?.display_name?.slice(0, 1) ?? "食"}</span><div><p><strong>{profile?.display_name ?? "成员"}</strong> 标记了 <Link href={`/place/${mark.group_place_id}`}>{place?.name ?? "一个地点"}</Link></p><b>{Number(mark.overall_rating).toFixed(1)} 分 · {mark.would_recommend ? "愿意推荐" : "不推荐"}</b>{mark.short_review && <blockquote>{mark.short_review}</blockquote>}{mark.recommended_items?.length ? <small>推荐：{mark.recommended_items.join("、")}</small> : null}<time>{relativeTime(mark.updated_at)}</time></div></li>; })}</ol> : <div className="empty-state"><strong>暂时还没有新动态</strong><span>新的真实标记会在这里出现。</span></div>}</section></AppShell>;
+  return <AppShell activeNav="饭后聊"><section className="activity-page"><p className="eyebrow">饭后聊</p><h1>朋友最近留下的体验</h1><p className="activity-intro">每一条都是成员独立的真实体验，不合成为统一结论。</p>{visits.length ? <ol className="activity-list">{visits.map((visit) => <li key={visit.visit_record_id}><span className="member-avatar">{visit.display_name.slice(0, 1) || "食"}</span><div><p><strong>{visit.display_name}</strong> 去了 <Link href={`/place/${visit.group_place_id}`}>{visit.place_name}</Link></p><b>{"🥣".repeat(visit.strength)} {bowlLabels[visit.strength]}</b>{visit.note && <blockquote>{visit.note}</blockquote>}{visit.dishes.length ? <small>推荐：{visit.dishes.join("、")}</small> : null}{(photosByVisit.get(visit.visit_record_id) ?? []).length > 0 && <div className="activity-photo-strip">{photosByVisit.get(visit.visit_record_id)!.map((url, index) => <img key={url} src={url} alt={`${visit.place_name} 的到访照片 ${index + 1}`} />)}</div>}{visit.visited_on && <small>到访：{visit.visited_on}</small>}<time>{relativeTime(visit.created_at)}</time></div></li>)}</ol> : <div className="empty-state"><strong>暂时还没有新饭后聊</strong><span>新的到访记录会在这里出现。</span></div>}</section></AppShell>;
 }

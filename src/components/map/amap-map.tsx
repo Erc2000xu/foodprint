@@ -25,6 +25,8 @@ export type MapPlace = {
   geoLabels?: string[];
   coverPhotoUrl?: string | null;
   savedForLater?: boolean;
+  bowlStrength?: number | null;
+  goodTagCounts?: Record<string, number>;
 };
 
 const defaultCenter: [number, number] = [116.397428, 39.90923];
@@ -56,7 +58,7 @@ export function AMapMap({ apiKey, places }: { apiKey?: string; places: MapPlace[
           const marker = new AMap.Marker({
             position: [place.longitude, place.latitude],
             anchor: "bottom-center",
-            content: `<div class="foodprint-marker" aria-label="${place.name}，${place.averageRating.toFixed(1)} 分，${place.markCount} 人标记"><span>${place.averageRating.toFixed(1)}</span><i>${place.markCount}</i></div>`,
+            content: `<div class="foodprint-marker" aria-label="${place.name}，${place.bowlStrength ? `${place.bowlStrength} 层小碗` : `${place.averageRating.toFixed(1)} 分`}，${place.markCount} 人标记"><span>${place.bowlStrength ? "🥣".repeat(place.bowlStrength) : place.averageRating.toFixed(1)}</span><i>${place.markCount}</i></div>`,
           });
           marker.on("click", () => window.location.assign(`/place/${place.id}`));
           mapInstance.add(marker);

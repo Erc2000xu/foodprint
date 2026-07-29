@@ -38,13 +38,16 @@ export async function GET(request: NextRequest) {
     : await markQuery.eq("user_id", user.id);
   const marks = marksResult.data ?? [];
   const markIds = marks.map((row) => row.id);
-  const [placesResult, visitsResult, wishlistResult, photosResult, profileResult, membersResult] = await Promise.all([
+  const [placesResult, visitsResult, wishlistResult, photosResult, profileResult, membersResult, opinionsResult, visitRecordsResult, personalV13Result] = await Promise.all([
     placeIds.length ? dataClient.from("places").select("*").in("id", placeIds) : Promise.resolve({ data: [] }),
     scope === "group" ? markIds.length ? dataClient.from("visits").select("*").in("place_mark_id", markIds) : Promise.resolve({ data: [] }) : dataClient.from("visits").select("*").eq("user_id", user.id),
     scope === "group" ? groupPlaceIds.length ? wishlistQuery.in("group_place_id", groupPlaceIds) : Promise.resolve({ data: [] }) : wishlistQuery.eq("user_id", user.id),
     scope === "group" ? photoQuery.eq("group_id", membership.group_id) : photoQuery.eq("user_id", user.id),
     dataClient.from("profiles").select("id, display_name, avatar_path, bio, preferred_theme, created_at, updated_at").eq("id", user.id).maybeSingle(),
     scope === "group" ? dataClient.from("group_members").select("group_id, user_id, role, status, joined_at, removed_at, created_at, updated_at, profiles(display_name, avatar_path)").eq("group_id", membership.group_id) : Promise.resolve({ data: [] }),
+    scope === "group" && groupPlaceIds.length ? dataClient.from("current_opinions").select("*").in("group_place_id", groupPlaceIds) : Promise.resolve({ data: [] }),
+    scope === "group" && groupPlaceIds.length ? dataClient.from("visit_records").select("*").in("group_place_id", groupPlaceIds) : Promise.resolve({ data: [] }),
+    scope === "mine" ? supabase.rpc("export_my_v1_3_records", { p_group_id: membership.group_id }) : Promise.resolve({ data: null }),
   ]);
   const referencedGroupPlaceIds = new Set([...marks.map((row) => row.group_place_id), ...(wishlistResult.data ?? []).map((row) => row.group_place_id)]);
   const exportedGroupPlaces = scope === "group" ? groupPlaces ?? [] : (groupPlaces ?? []).filter((row) => referencedGroupPlaceIds.has(row.id));
@@ -57,6 +60,8 @@ export async function GET(request: NextRequest) {
     group_members: scope === "group" ? membersResult.data ?? [] : undefined,
     places: exportedPlaces, group_places: exportedGroupPlaces, place_marks: marks,
     visits: visitsResult.data ?? [], wishlist_items: wishlistResult.data ?? [], photos_manifest: photosResult.data ?? [],
+    current_opinions: scope === "group" ? opinionsResult.data ?? [] : personalV13Result.data?.current_opinions ?? [],
+    visit_records: scope === "group" ? visitRecordsResult.data ?? [] : personalV13Result.data?.visit_records ?? [],
   };
   const stamp = new Date().toISOString().slice(0, 10);
   return asDownload(payload, `foodprint-${scope}-${stamp}.json`);
