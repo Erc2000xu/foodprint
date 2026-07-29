@@ -6,6 +6,7 @@ import Link from "next/link";
 import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/actions";
 import { categoryOptions, type PlaceCategory } from "@/lib/mark-options";
 import { PhotoPicker } from "@/components/mark/photo-picker";
+import { BowlIcon, toBowlLevel } from "@/components/recommendation/bowl-icon";
 import { cuisineOptions } from "@/lib/discovery-options";
 import { amapFailureMessage } from "@/lib/amap/failure-message";
 import { searchAmapPoiTips } from "@/lib/amap/poi-client";
@@ -147,7 +148,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       <label>主菜系 <span className="required-mark">必填</span><select name="cuisine_slug" value={cuisine} onChange={(event) => setCuisine(event.target.value as typeof cuisine)}>{cuisineOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="attestation"><input name="attested" type="checkbox" required /> <span>我确认已亲自到访或体验过这里，内容基于真实体验。<b>必填</b></span></label>
       <label>到访日期 <span className="required-mark">必填</span><input name="visited_on" type="date" max={new Date().toISOString().slice(0, 10)} required /></label>
-      <fieldset className="meal-strength"><legend>这次的推荐强度 <span className="required-mark">必填</span></legend><div>{[[1, "值得去"], [2, "想再去"], [3, "会专门去"]].map(([value, label]) => <label key={value}><input name="strength" required type="radio" value={value} /><span>{"🥣".repeat(Number(value))} {label}</span></label>)}</div></fieldset>
+      <fieldset className="meal-strength"><legend>这次的推荐强度 <span className="required-mark">必填</span></legend><div>{[[1, "值得去"], [2, "想再去"], [3, "会专门去"]].map(([value, label]) => <label key={value}><input name="strength" required type="radio" value={value} /><span className="meal-strength__label"><BowlIcon level={toBowlLevel(Number(value))} size="sm" /> {label}</span></label>)}</div></fieldset>
       <fieldset className="scene-tag-picker"><legend>好在哪儿 <span className="required-mark">选 1–2 项</span></legend><div className="scene-tag-picker__options">{[["tasty", "吃得香"], ["comfortable", "坐得住"], ["good_for_chat", "聊得开"], ["good_value", "花得值"]].map(([slug, label]) => <label key={slug}><input type="checkbox" name="opinion_tags" value={slug} /><span>{label}</span></label>)}</div></fieldset>
       {!alreadyInGroup && <p className="first-mark-note">首次收录必须是你愿意推荐给朋友的地点。</p>}
       <label>推荐菜 / 饮品 <span className="optional-mark">可选</span><input name="dishes" maxLength={400} placeholder="用逗号分隔，例如：手冲咖啡，巴斯克" /></label>
