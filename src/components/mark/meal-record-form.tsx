@@ -1,0 +1,41 @@
+"use client";
+
+import Link from "next/link";
+import { useActionState, useState } from "react";
+import { recordPlaceVisit, type VisitResult } from "@/app/mark/actions";
+import { PhotoPicker } from "@/components/mark/photo-picker";
+
+type CurrentOpinion = { strength: number; tags: string[]; isAnonymous: boolean } | null;
+
+const tags = [
+  ["tasty", "吃得香"],
+  ["comfortable", "坐得住"],
+  ["good_for_chat", "聊得开"],
+  ["good_value", "花得值"],
+] as const;
+
+const strengths = ["值得去", "想再去", "会专门去"];
+const initial: VisitResult = {};
+
+export function MealRecordForm({ groupPlaceId, placeName, currentOpinion }: { groupPlaceId: string; placeName: string; currentOpinion: CurrentOpinion }) {
+  const mustCompleteOpinion = !currentOpinion || currentOpinion.tags.length === 0;
+  const [changed, setChanged] = useState(mustCompleteOpinion);
+  const [state, action, pending] = useActionState(recordPlaceVisit, initial);
+
+  if (state.success) return <section className="mark-card mark-success-card"><p className="eyebrow">这顿已记下</p><h1>{placeName}</h1><p className="form-success">{state.success}</p>{state.warning && <p className="form-error">{state.warning}</p>}<Link className="primary-link" href={`/place/${groupPlaceId}`}>回到地点详情</Link></section>;
+
+  return <section className="mark-card"><p className="eyebrow">记一顿</p><h1>{placeName}</h1><p>把这次的感受留在地点时间线里。评分只按你当前的观点计一次。</p><form className="mark-form" action={action}>
+    <input type="hidden" name="group_place_id" value={groupPlaceId} />
+    <label>到访日期 <span className="required-mark">必填</span><input name="visited_on" type="date" max={new Date().toISOString().slice(0, 10)} required /></label>
+    {currentOpinion && !mustCompleteOpinion && <fieldset className="meal-opinion-choice"><legend>这次和上次感觉一样吗？</legend><label><input checked={!changed} name="opinion_changed" type="radio" value="false" onChange={() => setChanged(false)} /> 是，沿用上次观点</label><label><input checked={changed} name="opinion_changed" type="radio" value="true" onChange={() => setChanged(true)} /> 有变化，更新我的观点</label></fieldset>}
+    {!currentOpinion || mustCompleteOpinion ? <input name="opinion_changed" type="hidden" value="true" /> : null}
+    {changed && <><fieldset className="meal-strength"><legend>这次的推荐强度 <span className="required-mark">必填</span></legend><div>{strengths.map((label, index) => <label key={label}><input name="strength" required type="radio" value={index + 1} defaultChecked={currentOpinion?.strength === index + 1} /><span>{"🥣".repeat(index + 1)} {label}</span></label>)}</div></fieldset><fieldset className="scene-tag-picker"><legend>好在哪儿 <span className="required-mark">选 1–2 项</span></legend><div className="scene-tag-picker__options">{tags.map(([value, label]) => <label key={value}><input defaultChecked={currentOpinion?.tags.includes(value)} name="tags" type="checkbox" value={value} /><span>{label}</span></label>)}</div></fieldset></>}
+    {!changed && <input name="opinion_changed" type="hidden" value="false" />}
+    <label>饭后感受 <span className="optional-mark">可选</span><textarea name="note" maxLength={1000} placeholder="想留下的真实感受" /></label>
+    <label>推荐菜 / 饮品 <span className="optional-mark">可选</span><input name="dishes" maxLength={400} placeholder="用逗号分隔，例如：烧鹅，酸奶" /></label>
+    <PhotoPicker />
+    <label className="attestation"><input name="anonymous" type="checkbox" /> <span>匿名分享给小组<br /><small>大家会看到“匿名成员”；你自己仍可管理和导出这条记录。</small></span></label>
+    {state.error && <p className="form-error">{state.error}</p>}
+    <button className="primary-button" disabled={pending}>{pending ? "正在保存…" : "记下这顿饭"}</button>
+  </form></section>;
+}

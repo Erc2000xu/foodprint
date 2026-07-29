@@ -6,7 +6,7 @@ const navigation = [
   { label: "发现", icon: "/nav-icons/discover.png", href: "/" },
   { label: "去试试", icon: "/nav-icons/map.png", href: "/try" },
   { label: "记一顿", icon: "/nav-icons/mark.png", href: "/mark", add: true },
-  { label: "动态", icon: "/nav-icons/activity.png", href: "/activity" },
+  { label: "饭后聊", icon: "/nav-icons/activity.png", href: "/activity" },
   { label: "我的", icon: "/nav-icons/profile.png", href: "/admin" },
 ];
 

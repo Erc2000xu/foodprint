@@ -8,6 +8,17 @@ import { createClient } from "@/lib/supabase/server";
 export type InviteResult = { error?: string; inviteUrl?: string };
 export type ManagementResult = { error?: string; success?: string };
 
+export async function leaveActiveGroup(_: ManagementResult, formData: FormData): Promise<ManagementResult> {
+  const groupId = z.string().uuid().safeParse(formData.get("group_id"));
+  if (!groupId.success) return { error: "共同地图信息无效，请刷新后重试。" };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("leave_active_group", { p_group_id: groupId.data });
+  if (error) return { error: error.message === "transfer ownership before leaving this group" ? "Owner 请先转让所有权后再退出。" : error.message };
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { success: "你已退出共同地图；此前留下的地点、笔记、照片和体验会保留，并显示为「已离开成员」。" };
+}
+
 export async function createInvitation(_: InviteResult, formData: FormData): Promise<InviteResult> {
   const groupId = z.string().uuid().safeParse(formData.get("group_id"));
   if (!groupId.success) return { error: "小组信息无效，请刷新后重试。" };

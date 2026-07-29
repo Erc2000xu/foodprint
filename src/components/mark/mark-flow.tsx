@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState, useTransition } from "reac
 import Image from "next/image";
 import Link from "next/link";
 import { lookupAmapPoi, savePlaceMark, type MarkResult } from "@/app/mark/actions";
-import { categoryOptions, qualityLabels, sceneTags, type PlaceCategory } from "@/lib/mark-options";
+import { categoryOptions, type PlaceCategory } from "@/lib/mark-options";
 import { PhotoPicker } from "@/components/mark/photo-picker";
 import { cuisineOptions } from "@/lib/discovery-options";
 import { amapFailureMessage } from "@/lib/amap/failure-message";
@@ -54,22 +54,6 @@ function formatDistance(distanceMeters?: number) {
 function cityTagTone(city: string) {
   const code = Array.from(city).reduce((sum, character) => sum + character.charCodeAt(0), 0);
   return ["city-tag--teal", "city-tag--coral", "city-tag--gold"][code % 3];
-}
-
-function StarRating({ name, label, required = false }: { name: string; label: string; required?: boolean }) {
-  const [value, setValue] = useState<number | null>(null);
-  const chooseRating = (star: number) => {
-    setValue((current) => !required && current === star ? null : star);
-  };
-
-  return <fieldset className={`star-rating${required ? " star-rating--required" : ""}`}>
-    <legend>{label}{required ? <span className="required-mark">必填</span> : <span className="optional-mark">可选</span>}</legend>
-    <input type="hidden" name={name} value={value ?? ""} />
-    <div className="star-rating__controls" role="group" aria-label={label}>
-      {[1, 2, 3, 4, 5].map((star) => <button key={star} className={`star-rating__button${value !== null && value >= star ? " star-rating__button--selected" : ""}`} type="button" onClick={() => chooseRating(star)} aria-label={`设置为 ${star} 星`} aria-pressed={value === star}>★</button>)}
-    </div>
-    <p className="star-rating__hint">{value === null ? required ? "请选择 1–5 星。" : "不填写不会影响保存。" : `${value} 星${required ? "" : "；再次点选同一颗星可清除。"}`}</p>
-  </fieldset>;
 }
 
 export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidate }) {
@@ -162,27 +146,14 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       <label>地点类型<select name="primary_category" value={primaryCategory} onChange={(event) => setPrimaryCategory(event.target.value as PlaceCategory)}>{categoryOptions.map(([value, categoryLabel]) => <option key={value} value={value}>{categoryLabel}</option>)}</select></label>
       <label>主菜系 <span className="required-mark">必填</span><select name="cuisine_slug" value={cuisine} onChange={(event) => setCuisine(event.target.value as typeof cuisine)}>{cuisineOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="attestation"><input name="attested" type="checkbox" required /> <span>我确认已亲自到访或体验过这里，内容基于真实体验。<b>必填</b></span></label>
-      <StarRating name="overall_rating" label="综合体验" required />
-      <div className="rating-grid">
-        <StarRating name="quality_rating" label={qualityLabels[primaryCategory]} />
-        <StarRating name="value_rating" label="性价比" />
-        <StarRating name="environment_rating" label="环境氛围" />
-        <StarRating name="service_rating" label="服务体验" />
-        <StarRating name="uniqueness_rating" label="独特性" />
-      </div>
-      <fieldset className="scene-tag-picker">
-        <legend>适合什么场景 <span className="optional-mark">可选，可多选</span></legend>
-        <div className="scene-tag-picker__options">
-          {sceneTags.map(([slug, label]) => <label key={slug}><input type="checkbox" name="scene_tags" value={slug} /><span>{label}</span></label>)}
-        </div>
-      </fieldset>
-      {alreadyInGroup ? <label>是否推荐<select name="would_recommend" defaultValue="true"><option value="true">愿意推荐</option><option value="false">不推荐</option></select></label> : <><input type="hidden" name="would_recommend" value="true" /><p className="first-mark-note">首次收录必须是你愿意推荐给朋友的地点。</p></>}
-      <label>是否愿意再去 <span className="optional-mark">可选</span><select name="would_revisit" defaultValue=""><option value="">不填写</option><option value="yes">愿意再去</option><option value="maybe">看情况</option><option value="no">不愿意再去</option></select></label>
-      <label>最近到访日期 <span className="optional-mark">可选</span><input name="last_visited_on" type="date" /></label>
-      <label>人均消费（元） <span className="optional-mark">可选</span><input name="price_per_person" type="number" min="0" step="1" inputMode="decimal" /></label>
-      <label>推荐菜 / 饮品 <span className="optional-mark">可选</span><input name="recommended_items" maxLength={400} placeholder="用逗号分隔，例如：手冲咖啡，巴斯克" /></label>
-      <label>一句体验 <span className="optional-mark">可选</span><input name="short_review" maxLength={1000} placeholder="想留下的真实感受" /></label>
+      <label>到访日期 <span className="required-mark">必填</span><input name="visited_on" type="date" max={new Date().toISOString().slice(0, 10)} required /></label>
+      <fieldset className="meal-strength"><legend>这次的推荐强度 <span className="required-mark">必填</span></legend><div>{[[1, "值得去"], [2, "想再去"], [3, "会专门去"]].map(([value, label]) => <label key={value}><input name="strength" required type="radio" value={value} /><span>{"🥣".repeat(Number(value))} {label}</span></label>)}</div></fieldset>
+      <fieldset className="scene-tag-picker"><legend>好在哪儿 <span className="required-mark">选 1–2 项</span></legend><div className="scene-tag-picker__options">{[["tasty", "吃得香"], ["comfortable", "坐得住"], ["good_for_chat", "聊得开"], ["good_value", "花得值"]].map(([slug, label]) => <label key={slug}><input type="checkbox" name="opinion_tags" value={slug} /><span>{label}</span></label>)}</div></fieldset>
+      {!alreadyInGroup && <p className="first-mark-note">首次收录必须是你愿意推荐给朋友的地点。</p>}
+      <label>推荐菜 / 饮品 <span className="optional-mark">可选</span><input name="dishes" maxLength={400} placeholder="用逗号分隔，例如：手冲咖啡，巴斯克" /></label>
+      <label>饭后感受 <span className="optional-mark">可选</span><textarea name="note" maxLength={1000} placeholder="想留下的真实感受" /></label>
       <PhotoPicker />
+      <label className="attestation"><input name="anonymous" type="checkbox" /> <span>匿名分享给小组<br /><small>大家会看到“匿名成员”；你自己仍可管理和导出这条记录。</small></span></label>
       {state.error && <p className="form-error">{state.error}</p>}
       <button className="primary-button" disabled={pending}>{pending ? "正在保存…" : "保存真实标记"}</button>
     </form>
