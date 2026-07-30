@@ -76,7 +76,7 @@ export function DiscoveryBrowser({ places, cuisineOptions }: { places: MapPlace[
   }, [places, state, cuisineLabelBySlug, origin]);
   const activeSearch = hasActiveSearch(state);
   const currentUrl = `${pathname}${params.toString() ? `?${params}` : ""}`;
-  const recentPlaces = useMemo(() => [...places].sort((left, right) => dateScore(right.lastMarkedAt) - dateScore(left.lastMarkedAt)).slice(0, 3), [places]);
+  const recentPlaces = useMemo(() => [...places].sort((left, right) => dateScore(right.lastMarkedAt) - dateScore(left.lastMarkedAt)), [places]);
 
   const commit = (patch: Partial<SearchState>, options?: { clear?: boolean }) => {
     const next: SearchState = options?.clear ? { ...defaultSearchState, ...patch } : { ...state, ...patch, selectedPlaceId: undefined };

@@ -35,7 +35,10 @@ describe("V1.3.1 discovery place card", () => {
     expect(opinionCounts).toHaveTextContent("聊得开");
     expect(opinionCounts).toHaveTextContent("花得值");
     expect(screen.getByText("烧鹅、虾饺，等 1 道")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "加入下回吃" })).toHaveAttribute("aria-pressed", "false");
+    const wishlistButton = screen.getByRole("button", { name: "加入下回吃" });
+    expect(wishlistButton).toHaveAttribute("aria-pressed", "false");
+    expect(wishlistButton.closest(".home-place-card__media")).not.toBeNull();
+    expect(wishlistButton.closest(".home-place-card__photo")).toBeNull();
   });
 
   it("keeps legacy scenes separate when no new opinion counts exist", () => {

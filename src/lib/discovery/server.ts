@@ -22,7 +22,7 @@ export async function getActiveDiscoveryGroup(supabase: SupabaseLike) {
 /** The single server-side read model used by the homepage and versioned API. */
 export async function loadDiscoveryData(supabase: SupabaseLike, groupId: string) {
   const { data: { user } } = await supabase.auth.getUser();
-  const { data: groupPlaces, error: groupPlacesError } = await supabase.from("group_places").select("id, place_id, primary_category, created_at").eq("group_id", groupId).eq("status", "active").limit(100);
+  const { data: groupPlaces, error: groupPlacesError } = await supabase.from("group_places").select("id, place_id, primary_category, created_at").eq("group_id", groupId).eq("status", "active").order("created_at", { ascending: false });
   if (groupPlacesError || !groupPlaces?.length) return { places: [] as MapPlace[], geoOptions: [] as GeoOption[] };
   const groupPlaceIds = groupPlaces.map((place) => place.id);
   const placeIds = groupPlaces.map((place) => place.place_id);

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DiscoveryBrowser } from "@/components/map/map-browser";
+import type { MapPlace } from "@/components/map/amap-map";
 
 const replace = vi.fn();
 const refresh = vi.fn();
@@ -61,5 +62,25 @@ describe("V1.3.1 controlled discovery filter menus", () => {
     await user.click(await screen.findByRole("button", { name: "顺义区" }));
     expect(screen.getByRole("button", { name: "按地点找" })).toHaveAttribute("aria-expanded", "false");
     await waitFor(() => expect(replace).toHaveBeenCalledWith(expect.stringContaining("locationName=%E9%A1%BA%E4%B9%89%E5%8C%BA"), { scroll: false }));
+  });
+
+  it("renders every place in the default scrollable discovery list", () => {
+    const places: MapPlace[] = Array.from({ length: 5 }, (_, index) => ({
+      id: `${index + 1}1111111-1111-4111-8111-111111111111`,
+      name: `朋友推荐餐厅 ${index + 1}`,
+      category: "restaurant",
+      latitude: 39.9 + index * 0.001,
+      longitude: 116.4 + index * 0.001,
+      averageRating: 5,
+      markCount: 1,
+      recommendCount: 1,
+      sceneTags: [],
+      lastMarkedAt: `2026-07-${String(20 + index).padStart(2, "0")}T12:00:00.000Z`,
+    }));
+
+    const { container } = render(<DiscoveryBrowser places={places} cuisineOptions={[]} />);
+
+    expect(container.querySelectorAll(".home-place-card-wrap")).toHaveLength(5);
+    places.forEach((place) => expect(screen.getByRole("heading", { name: place.name })).toBeInTheDocument());
   });
 });
