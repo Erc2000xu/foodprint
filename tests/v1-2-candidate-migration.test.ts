@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const migration = readFileSync(new URL("../supabase/migrations/20260728130000_v1_2_place_candidates.sql", import.meta.url), "utf8");
+const migration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260728130000_v1_2_place_candidates.sql"), "utf8");
 
 describe("V1.2 candidate lifecycle migration", () => {
   it("keeps candidates private, group-scoped, and deduplicated while pending", () => {

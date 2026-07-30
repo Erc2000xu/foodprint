@@ -75,14 +75,15 @@ export function TryList({ candidates }: { candidates: CandidateCard[] }) {
   const [searchError, setSearchError] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const requestId = useRef(0);
-  const [state, action, pending] = useActionState(createPlaceCandidate, initial);
-
-  useEffect(() => {
-    if (!state.success || !selected) return;
-    setSelected(undefined);
-    setKeyword("");
-    router.refresh();
-  }, [router, selected, state.success]);
+  const [state, action, pending] = useActionState(async (previous: CandidateResult, formData: FormData) => {
+    const result = await createPlaceCandidate(previous, formData);
+    if (result.success) {
+      setSelected(undefined);
+      setKeyword("");
+      router.refresh();
+    }
+    return result;
+  }, initial);
 
   useEffect(() => {
     if (keyword.trim().length < 2 || selected) {

@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const privacyMigration = readFileSync(new URL("../supabase/migrations/20260729140000_v1_3_owner_only_member_directory.sql", import.meta.url), "utf8");
-const visitsMigration = readFileSync(new URL("../supabase/migrations/20260729141000_v1_3_visit_records.sql", import.meta.url), "utf8");
+const privacyMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260729140000_v1_3_owner_only_member_directory.sql"), "utf8");
+const visitsMigration = readFileSync(resolve(process.cwd(), "supabase/migrations/20260729141000_v1_3_visit_records.sql"), "utf8");
 
 describe("V1.3 privacy and visit migrations", () => {
   it("limits the email-bearing member directory to Owners", () => {

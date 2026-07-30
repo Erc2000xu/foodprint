@@ -14,6 +14,8 @@ export type MapPlace = {
   sceneTags: string[];
   city?: string;
   district?: string;
+  businessAreaName?: string;
+  businessAreaAdcode?: string;
   address?: string;
   cuisineSlugs?: string[];
   pricePerPerson?: number | null;
