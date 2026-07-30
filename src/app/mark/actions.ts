@@ -91,7 +91,11 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
   }
   const { error: discoveryError } = await activeGroup.supabase.rpc("refresh_group_place_discovery_metadata", { p_group_place_id: data[0].group_place_id });
   if (discoveryError) return { error: `真实标记已保存，但检索信息待后台补充：${discoveryError.message}` };
-  revalidatePath("/");
+  // Best-effort, provider-owned display cache. A failed lookup must never roll
+  // back a valid meal record; the throttled discovery backfill will retry it.
+  await activeGroup.supabase.functions.invoke("amap-poi-search", {
+    body: { operation: "business_area_backfill", groupPlaceId: data[0].group_place_id },
+  }).catch(() => undefined);
   revalidatePath("/");
   revalidatePath(`/place/${data[0].group_place_id}`);
   return { success: "第一顿已记下，地点已加入共同地图。" };

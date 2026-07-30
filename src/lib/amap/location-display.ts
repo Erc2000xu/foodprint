@@ -4,9 +4,18 @@
  * infer or hard-code a city.
  */
 export function displayAmapAdministrativeLocation(city?: string | null, district?: string | null) {
+  return amapAdministrativeLocationParts(city, district).join(" · ");
+}
+
+export function amapAdministrativeLocationParts(city?: string | null, district?: string | null) {
   const cityName = city?.trim() ?? "";
   let districtName = district?.trim() ?? "";
   if (cityName && districtName.startsWith(cityName)) districtName = districtName.slice(cityName.length);
   else if (cityName.endsWith("市") && districtName.startsWith(cityName.slice(0, -1))) districtName = districtName.slice(cityName.length - 1);
-  return [cityName, districtName].filter(Boolean).join(" · ");
+  return [cityName, districtName].filter(Boolean);
+}
+
+/** Builds the shared AMap-owned location chain without inventing missing data. */
+export function displayAmapLocationChain(city?: string | null, district?: string | null, businessArea?: string | null) {
+  return [...amapAdministrativeLocationParts(city, district), businessArea?.trim()].filter(Boolean).join(" · ");
 }

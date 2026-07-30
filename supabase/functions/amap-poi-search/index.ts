@@ -27,6 +27,18 @@ function cityFrom(value: unknown) {
   return match?.[1] ?? "";
 }
 
+type BusinessAreaCandidate = {
+  place_id: string;
+  group_place_id: string;
+  latitude: number;
+  longitude: number;
+  failure_count: number;
+};
+
+function isoAfter(milliseconds: number) {
+  return new Date(Date.now() + milliseconds).toISOString();
+}
+
 Deno.serve(async (request) => {
   const startedAt = Date.now();
   const origin = request.headers.get("origin");
@@ -51,8 +63,8 @@ Deno.serve(async (request) => {
     if (membershipError) throw membershipError;
     if (!memberships?.length) return response({ error: "你尚未加入可用的共同地图。" }, 403, origin);
 
-    const body = await request.json() as { operation?: unknown; keyword?: unknown; location?: { latitude?: unknown; longitude?: unknown } };
-    const operation = body.operation === "districts" ? "districts" : "poi_search";
+    const body = await request.json() as { operation?: unknown; keyword?: unknown; location?: { latitude?: unknown; longitude?: unknown }; groupPlaceId?: unknown };
+    const operation = body.operation === "districts" ? "districts" : body.operation === "business_area_backfill" ? "business_area_backfill" : "poi_search";
     const keyword = typeof body.keyword === "string" ? body.keyword.trim() : "";
     if (operation === "poi_search" && (keyword.length < 2 || keyword.length > 80)) return response({ error: "请输入 2 至 80 个字符的地点名称。" }, 400, origin);
     const amapKey = Deno.env.get("AMAP_WEBSERVICE_KEY");
@@ -77,6 +89,107 @@ Deno.serve(async (request) => {
       const districts = (payload.districts?.[0]?.districts ?? []).flatMap((district) => district.name && district.adcode ? [{ name: district.name, adcode: district.adcode }] : []);
       logAmapEvent({ operation: "poi_search", outcome: "success", durationMs: Date.now() - startedAt, upstreamStatus: upstreamResponse.status });
       return response({ districts }, 200, origin);
+    }
+
+    if (operation === "business_area_backfill") {
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (body.groupPlaceId !== undefined && (typeof body.groupPlaceId !== "string" || !uuidPattern.test(body.groupPlaceId))) {
+        return response({ error: "地点信息无效。" }, 400, origin);
+      }
+      const groupPlaceId = typeof body.groupPlaceId === "string" ? body.groupPlaceId : null;
+      const { data: candidates, error: candidateError } = await supabase.rpc("list_amap_business_area_backfill_candidates", {
+        p_group_place_id: groupPlaceId,
+        p_limit: groupPlaceId ? 1 : 3,
+      });
+      if (candidateError) throw candidateError;
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (!serviceRoleKey) return response({ error: "商圈缓存服务配置不完整。" }, 503, origin);
+      const service = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
+      const saveBusinessAreaCache = async (values: Record<string, unknown>) => {
+        const { error } = await service.from("place_amap_business_area_cache").upsert(values, { onConflict: "place_id" });
+        if (error) throw error;
+      };
+      let updated = 0;
+
+      for (const candidate of (candidates ?? []) as BusinessAreaCandidate[]) {
+        try {
+          await saveBusinessAreaCache({
+            place_id: candidate.place_id,
+            status: "pending",
+            business_area_name: null,
+            adcode: null,
+            center_latitude: null,
+            center_longitude: null,
+            last_attempt_at: new Date().toISOString(),
+            failure_category: null,
+          });
+          const upstream = new URL("https://restapi.amap.com/v3/geocode/regeo");
+          upstream.searchParams.set("key", amapKey);
+          upstream.searchParams.set("location", `${candidate.longitude},${candidate.latitude}`);
+          upstream.searchParams.set("extensions", "all");
+          upstream.searchParams.set("radius", "1000");
+          upstream.searchParams.set("roadlevel", "0");
+          const upstreamResponse = await fetch(upstream, { signal: AbortSignal.timeout(8_000) });
+          const payload = await upstreamResponse.json() as {
+            status?: string;
+            infocode?: string;
+            regeocode?: { addressComponent?: { adcode?: string; businessAreas?: Array<{ name?: string; location?: unknown }> } };
+          };
+          if (!upstreamResponse.ok || payload.status !== "1") {
+            const category = classifyProviderFailure(upstreamResponse.status, payload.infocode);
+            const failureCount = Math.min(Number(candidate.failure_count ?? 0) + 1, 100);
+            await saveBusinessAreaCache({
+              place_id: candidate.place_id,
+              status: "temporary_failure",
+              business_area_name: null,
+              adcode: null,
+              center_latitude: null,
+              center_longitude: null,
+              failure_count: failureCount,
+              failure_category: category,
+              next_refresh_after: isoAfter(Math.min(24, 2 ** Math.min(failureCount, 5)) * 60 * 60 * 1000),
+              last_attempt_at: new Date().toISOString(),
+            });
+            continue;
+          }
+          const component = payload.regeocode?.addressComponent;
+          const businessAreas = Array.isArray(component?.businessAreas) ? component.businessAreas : [];
+          const businessArea = businessAreas.find((item) => item.name);
+          const hasBusinessArea = Boolean(businessArea?.name && component?.adcode);
+          const center = coordinatesFrom(businessArea?.location);
+          await saveBusinessAreaCache({
+            place_id: candidate.place_id,
+            status: hasBusinessArea ? "success" : "not_found",
+            business_area_name: hasBusinessArea ? businessArea?.name ?? null : null,
+            adcode: hasBusinessArea ? component?.adcode ?? null : null,
+            center_latitude: center?.latitude ?? null,
+            center_longitude: center?.longitude ?? null,
+            queried_at: new Date().toISOString(),
+            last_attempt_at: new Date().toISOString(),
+            next_refresh_after: isoAfter(30 * 24 * 60 * 60 * 1000),
+            failure_count: 0,
+            failure_category: null,
+          });
+          updated += 1;
+        } catch (error) {
+          const category = isTimeoutError(error) ? "provider_timeout" : "network_failure";
+          const failureCount = Math.min(Number(candidate.failure_count ?? 0) + 1, 100);
+          await saveBusinessAreaCache({
+            place_id: candidate.place_id,
+            status: "temporary_failure",
+            business_area_name: null,
+            adcode: null,
+            center_latitude: null,
+            center_longitude: null,
+            failure_count: failureCount,
+            failure_category: category,
+            next_refresh_after: isoAfter(Math.min(24, 2 ** Math.min(failureCount, 5)) * 60 * 60 * 1000),
+            last_attempt_at: new Date().toISOString(),
+          });
+        }
+      }
+      logAmapEvent({ operation: "business_area_backfill", outcome: "success", durationMs: Date.now() - startedAt });
+      return response({ processed: (candidates ?? []).length, updated }, 200, origin);
     }
 
     const latitude = Number(body.location?.latitude);

@@ -18,7 +18,7 @@ export function parseAllowedOrigins(raw: string | undefined): Set<string> {
     if (!origin) continue;
     try {
       const url = new URL(origin);
-      if ((url.protocol === "https:" || url.protocol === "http:") && url.origin === origin) origins.add(origin);
+      if ((url.protocol === "https:" || url.protocol === "http:") && url.origin === origin && !url.hostname.includes("*")) origins.add(origin);
     } catch {
       // Invalid configuration must never broaden the CORS boundary.
     }
@@ -57,7 +57,7 @@ export function isTimeoutError(error: unknown): boolean {
 
 /** Logs only aggregate-safe operational fields; never keywords, coordinates, user IDs or secrets. */
 export function logAmapEvent(event: {
-  operation: "poi_search" | "static_map";
+  operation: "poi_search" | "static_map" | "business_area_backfill";
   outcome: "success" | "failure";
   durationMs: number;
   category?: AmapFailureCategory;

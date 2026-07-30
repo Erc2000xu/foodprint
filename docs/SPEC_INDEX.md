@@ -1,6 +1,6 @@
 # 食迹 Foodprint｜规格与交付索引
 
-> 更新日期：2026-07-28
+> 更新日期：2026-07-30
 > 使用方式：开发从上至下推进。每一项由项目负责人明确批准后，才可将状态改为“开发中”并开始代码变更。
 
 ## 1. 总体交付链路
@@ -21,6 +21,11 @@ P0 是唯一立即阻塞项：V1.2 的地点检索入口依赖稳定高德服务
 | specs/2026-07-v1-2-discovery-try-list.md | 待批准 | 发现、去试试、下回吃与候选流转 | P0 验收、生命周期工程设计 |
 | decisions/2026-07-01-place-lifecycle-recommendation-model.md | 已记录 | 地点状态、重复到访和汇总原则 | V1.2/V1.3 实施前复核 |
 | specs/2026-07-v1-3-record-a-meal.md | 待批准 | 记一顿、三级小碗、地点详情和饭后聊 | V1.2 稳定、迁移评审 |
+| specs/2026-07-v1-3-1-discovery-polish.md | 开发完成，待 Preview 验收（2026-07-30） | 发现卡片、三级小碗、搜索筛选和商圈兼容 | V1.3 验收反馈 |
+| specs/2026-07-v1-3-2-try-flow.md | 视觉与需求确认中 | 去试试导航、附近搜索、分类和完整转正流程 | V1.3.1 规则复用 |
+| VISUAL_ASSET_REGISTRY.md | 生效 | 全产品视觉资产、图标、插画的状态与开发门禁 | 每次视觉与页面迭代 |
+| COPY_VOICE_SYSTEM.md | 生效 | 品牌语气、页面标题、功能文案和状态文案台账 | 每次新增或修改用户可见文字 |
+| FOODPRINT_V1_3_X_ITERATION_HANDOFF_2026-07-29.md | 生效 | V1.3.1/V1.3.2 已确认规则、完成情况与下次开发顺序 | 下一次小迭代开发前 |
 | specs/2026-07-v2-mainland-maps-compliance.md | 待立项 | 腾讯云/.com.cn 迁移、动态地图、合规 | ICP、迁移与合规评审 |
 | specs/2026-07-v3-editorial-visual-system.md | 待立项 | 视觉系统、纸张感时间线、小碗图标 | V2 稳定、真实用户反馈 |
 | SECURITY_COMPLIANCE_BASELINE.md | 生效 | 安全、隐私、用户权利和大陆发布检查 | 涉及数据、内容、部署的每个版本 |

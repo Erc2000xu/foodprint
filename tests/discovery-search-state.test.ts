@@ -35,4 +35,17 @@ describe("V1 discovery SearchState", () => {
     expect(filterDiscoveryPlaces(places, coffee, labels).map((place) => place.id)).toEqual(["sanlitun-coffee"]);
     expect(searchStateToParams(coffee).get("quick")).toBe("coffee");
   });
+
+  it("round-trips an AMap location suggestion and applies its documented radius", () => {
+    const selected = searchStateFromParams(new URLSearchParams("locationKind=business_district&locationName=%E7%8E%8B%E5%BA%9C%E4%BA%95&locationId=poi-1&locationLat=39.9&locationLng=116.4"));
+    expect(selected.locationFilter?.name).toBe("王府井");
+    expect(filterDiscoveryPlaces(places, selected, labels).map((place) => place.id)).toEqual(["wangfujing-cantonese"]);
+    expect(searchStateToParams(selected).get("locationKind")).toBe("business_district");
+  });
+
+  it("matches an AMap district exactly after tolerating the historical city prefix", () => {
+    const districtPlaces = places.map((place, index) => ({ ...place, district: index ? "北京市朝阳区" : "北京市东城区" }));
+    const selected = searchStateFromParams(new URLSearchParams("locationKind=district&locationName=%E4%B8%9C%E5%9F%8E%E5%8C%BA&locationId=110101"));
+    expect(filterDiscoveryPlaces(districtPlaces, selected, labels).map((place) => place.id)).toEqual(["wangfujing-cantonese"]);
+  });
 });

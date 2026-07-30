@@ -22,11 +22,11 @@ export async function getActiveDiscoveryGroup(supabase: SupabaseLike) {
 /** The single server-side read model used by the homepage and versioned API. */
 export async function loadDiscoveryData(supabase: SupabaseLike, groupId: string) {
   const { data: { user } } = await supabase.auth.getUser();
-  const { data: groupPlaces, error: groupPlacesError } = await supabase.from("group_places").select("id, place_id, primary_category, created_at").eq("group_id", groupId).eq("status", "active").limit(100);
+  const { data: groupPlaces, error: groupPlacesError } = await supabase.from("group_places").select("id, place_id, primary_category, created_at").eq("group_id", groupId).eq("status", "active").order("created_at", { ascending: false });
   if (groupPlacesError || !groupPlaces?.length) return { places: [] as MapPlace[], geoOptions: [] as GeoOption[] };
   const groupPlaceIds = groupPlaces.map((place) => place.id);
   const placeIds = groupPlaces.map((place) => place.place_id);
-  const [{ data: rawPlaces }, { data: stats }, { data: marks }, { data: cuisines }, { data: photos }, { data: wishlist }, { data: opinionSummaries }] = await Promise.all([
+  const [{ data: rawPlaces }, { data: stats }, { data: marks }, { data: cuisines }, { data: photos }, { data: wishlist }, { data: opinionSummaries }, { data: businessAreaCaches }] = await Promise.all([
     supabase.from("places").select("id, name, address, city, district, latitude, longitude").in("id", placeIds),
     supabase.from("group_place_stats").select("group_place_id, average_rating, mark_count, recommend_count").in("group_place_id", groupPlaceIds),
     supabase.from("place_marks").select("id, group_place_id, price_per_person, recommended_items, short_review, updated_at").in("group_place_id", groupPlaceIds).is("deleted_at", null).order("updated_at", { ascending: false }),
@@ -34,11 +34,13 @@ export async function loadDiscoveryData(supabase: SupabaseLike, groupId: string)
     supabase.from("photos").select("id, group_place_id, object_key, sort_order").in("group_place_id", groupPlaceIds).is("deleted_at", null).is("hidden_at", null).order("sort_order"),
     user ? supabase.from("wishlist_items").select("group_place_id").eq("user_id", user.id).in("group_place_id", groupPlaceIds) : Promise.resolve({ data: [] }),
     supabase.rpc("list_group_place_opinion_summaries", { p_group_id: groupId }),
+    supabase.from("place_amap_business_area_cache").select("place_id, business_area_name, adcode").in("place_id", placeIds).eq("status", "success"),
   ]);
   const markRows = (marks ?? []) as MarkRow[];
   const markIds = markRows.map((mark) => mark.id);
   const { data: markSceneTags } = markIds.length ? await supabase.from("place_mark_scene_tags").select("place_mark_id, scene_tag_slug").in("place_mark_id", markIds) : { data: [] };
   const placeById = new Map((rawPlaces ?? []).map((place) => [place.id, place]));
+  const businessAreaByPlaceId = new Map((businessAreaCaches ?? []).map((cache) => [cache.place_id, cache]));
   const statByGroupPlace = new Map((stats ?? []).map((stat) => [stat.group_place_id, stat]));
   const latestMark = new Map<string, MarkRow>();
   markRows.forEach((mark) => { if (!latestMark.has(mark.group_place_id)) latestMark.set(mark.group_place_id, mark); });
@@ -66,7 +68,8 @@ export async function loadDiscoveryData(supabase: SupabaseLike, groupId: string)
     if (!place || !stat) return [];
     const cover = coverRows.find((photo) => photo.group_place_id === groupPlace.id);
     const goodTagCounts: Record<string, number> = opinion ? { tasty: Number(opinion.tasty_count), comfortable: Number(opinion.comfortable_count), good_for_chat: Number(opinion.good_for_chat_count), good_value: Number(opinion.good_value_count) } : {};
-    return [{ id: groupPlace.id, name: place.name, category: groupPlace.primary_category, latitude: Number(place.latitude), longitude: Number(place.longitude), averageRating: Number(stat.average_rating ?? 0), markCount: Number(opinion?.friend_count ?? stat.mark_count ?? 0), recommendCount: Number(opinion?.friend_count ?? stat.recommend_count ?? 0), sceneTags: scenesByGroupPlace.get(groupPlace.id) ?? [], city: place.city ?? undefined, district: place.district ?? undefined, address: place.address ?? undefined, cuisineSlugs: cuisineByGroupPlace.get(groupPlace.id) ?? [], pricePerPerson: mark?.price_per_person === null || mark?.price_per_person === undefined ? null : Number(mark.price_per_person), recommendedItems: mark?.recommended_items ?? [], review: mark?.short_review ?? null, lastMarkedAt: opinion?.last_visited_at ?? mark?.updated_at ?? groupPlace.created_at, coverPhotoUrl: cover ? signedByObjectKey.get(cover.object_key) ?? null : null, savedForLater: wishlistIds.has(groupPlace.id), bowlStrength: opinion?.bowl_strength ?? null, goodTagCounts }];
+    const businessArea = businessAreaByPlaceId.get(place.id);
+    return [{ id: groupPlace.id, name: place.name, category: groupPlace.primary_category, latitude: Number(place.latitude), longitude: Number(place.longitude), averageRating: Number(stat.average_rating ?? 0), markCount: Number(opinion?.friend_count ?? stat.mark_count ?? 0), recommendCount: Number(opinion?.friend_count ?? stat.recommend_count ?? 0), sceneTags: scenesByGroupPlace.get(groupPlace.id) ?? [], city: place.city ?? undefined, district: place.district ?? undefined, businessAreaName: businessArea?.business_area_name ?? undefined, businessAreaAdcode: businessArea?.adcode ?? undefined, address: place.address ?? undefined, cuisineSlugs: cuisineByGroupPlace.get(groupPlace.id) ?? [], pricePerPerson: mark?.price_per_person === null || mark?.price_per_person === undefined ? null : Number(mark.price_per_person), recommendedItems: mark?.recommended_items ?? [], review: mark?.short_review ?? null, lastMarkedAt: opinion?.last_visited_at ?? mark?.updated_at ?? groupPlace.created_at, coverPhotoUrl: cover ? signedByObjectKey.get(cover.object_key) ?? null : null, savedForLater: wishlistIds.has(groupPlace.id), bowlStrength: opinion?.bowl_strength ?? null, goodTagCounts }];
   });
   return { places, geoOptions: [] as GeoOption[] };
 }

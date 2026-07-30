@@ -4,6 +4,13 @@ import { sceneTagLabels } from "@/lib/mark-options";
 
 export type DiscoverySort = "recommended" | "distance" | "recent";
 export type PriceRange = "under_50" | "50_100" | "100_200" | "200_400" | "over_400";
+export type DiscoveryLocationFilter = {
+  id: string;
+  name: string;
+  kind: "district" | "business_district" | "metro_station";
+  latitude?: number;
+  longitude?: number;
+};
 
 export type SearchState = {
   cityId: string;
@@ -16,6 +23,7 @@ export type SearchState = {
   sort: DiscoverySort;
   selectedPlaceId?: string;
   quickFilter?: "coffee" | "date";
+  locationFilter?: DiscoveryLocationFilter;
 };
 
 export const defaultSearchState: SearchState = {
@@ -28,6 +36,7 @@ export const defaultSearchState: SearchState = {
 
 const validPrices = new Set<PriceRange>(["under_50", "50_100", "100_200", "200_400", "over_400"]);
 const validSorts = new Set<DiscoverySort>(["recommended", "distance", "recent"]);
+const validLocationKinds = new Set<DiscoveryLocationFilter["kind"]>(["district", "business_district", "metro_station"]);
 
 function split(value: string | null) {
   return [...new Set((value ?? "").split(",").map((item) => item.trim()).filter(Boolean))].slice(0, 12);
@@ -37,6 +46,21 @@ export function searchStateFromParams(params: URLSearchParams): SearchState {
   const price = params.get("price");
   const sort = params.get("sort");
   const quick = params.get("quick");
+  const locationKind = params.get("locationKind");
+  const locationName = params.get("locationName")?.trim().slice(0, 80);
+  const locationId = params.get("locationId")?.trim().slice(0, 160);
+  const locationLatitude = Number(params.get("locationLat"));
+  const locationLongitude = Number(params.get("locationLng"));
+  const hasCoordinates = Number.isFinite(locationLatitude) && Number.isFinite(locationLongitude)
+    && Math.abs(locationLatitude) <= 90 && Math.abs(locationLongitude) <= 180;
+  const locationFilter = locationKind && validLocationKinds.has(locationKind as DiscoveryLocationFilter["kind"]) && locationName && locationId
+    ? {
+        kind: locationKind as DiscoveryLocationFilter["kind"],
+        name: locationName,
+        id: locationId,
+        ...(hasCoordinates ? { latitude: locationLatitude, longitude: locationLongitude } : {}),
+      }
+    : undefined;
   return {
     ...defaultSearchState,
     query: params.get("q")?.trim().slice(0, 80) || undefined,
@@ -47,6 +71,7 @@ export function searchStateFromParams(params: URLSearchParams): SearchState {
     sort: sort && validSorts.has(sort as DiscoverySort) ? sort as DiscoverySort : "recommended",
     selectedPlaceId: params.get("place")?.trim() || undefined,
     quickFilter: quick === "coffee" || quick === "date" ? quick : undefined,
+    locationFilter,
   };
 }
 
@@ -60,15 +85,45 @@ export function searchStateToParams(state: SearchState) {
   if (state.sort !== "recommended") params.set("sort", state.sort);
   if (state.selectedPlaceId) params.set("place", state.selectedPlaceId);
   if (state.quickFilter) params.set("quick", state.quickFilter);
+  if (state.locationFilter) {
+    params.set("locationKind", state.locationFilter.kind);
+    params.set("locationName", state.locationFilter.name);
+    params.set("locationId", state.locationFilter.id);
+    if (Number.isFinite(state.locationFilter.latitude) && Number.isFinite(state.locationFilter.longitude)) {
+      params.set("locationLat", String(state.locationFilter.latitude));
+      params.set("locationLng", String(state.locationFilter.longitude));
+    }
+  }
   return params;
 }
 
 export function hasActiveSearch(state: SearchState) {
-  return Boolean(state.query || state.areaIds.length || state.cuisineIds.length || state.sceneTagIds.length || state.priceRange || state.quickFilter);
+  return Boolean(state.query || state.areaIds.length || state.cuisineIds.length || state.sceneTagIds.length || state.priceRange || state.quickFilter || state.locationFilter);
 }
 
 function markedAt(place: MapPlace) {
   return place.lastMarkedAt ? new Date(place.lastMarkedAt).getTime() : 0;
+}
+
+export function discoveryDistanceMeters(from: { latitude: number; longitude: number }, place: Pick<MapPlace, "latitude" | "longitude">) {
+  const radians = Math.PI / 180;
+  const radius = 6_371_000;
+  const latitudeDelta = (place.latitude - from.latitude) * radians;
+  const longitudeDelta = (place.longitude - from.longitude) * radians;
+  const value = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(from.latitude * radians) * Math.cos(place.latitude * radians) * Math.sin(longitudeDelta / 2) ** 2;
+  return 2 * radius * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+export function matchesDiscoveryLocation(place: MapPlace, filter?: DiscoveryLocationFilter) {
+  if (!filter) return true;
+  if (filter.kind === "district") {
+    const district = place.district?.trim() ?? "";
+    return district === filter.name || district.endsWith(filter.name);
+  }
+  if (!Number.isFinite(filter.latitude) || !Number.isFinite(filter.longitude)) return false;
+  const radius = filter.kind === "metro_station" ? 1_500 : 3_000;
+  return discoveryDistanceMeters({ latitude: filter.latitude!, longitude: filter.longitude! }, place) <= radius;
 }
 
 export function filterDiscoveryPlaces(places: MapPlace[], state: SearchState, cuisineLabels: Record<string, string>) {
@@ -77,12 +132,13 @@ export function filterDiscoveryPlaces(places: MapPlace[], state: SearchState, cu
     if (state.quickFilter === "coffee" && place.category !== "cafe" && !place.cuisineSlugs?.includes("coffee_tea")) return false;
     if (state.quickFilter === "date" && !place.sceneTags.includes("date")) return false;
     if (state.areaIds.length && !state.areaIds.some((id) => place.geoEntityIds?.includes(id))) return false;
+    if (!matchesDiscoveryLocation(place, state.locationFilter)) return false;
     if (state.cuisineIds.length && !state.cuisineIds.some((id) => place.cuisineSlugs?.includes(id))) return false;
     if (state.sceneTagIds.length && !state.sceneTagIds.some((id) => place.sceneTags.includes(id))) return false;
     if (state.priceRange && priceRangeFor(place.pricePerPerson) !== state.priceRange) return false;
     if (!needle) return true;
     const searchable = [
-      place.name, place.city, place.district, place.address, ...(place.geoLabels ?? []),
+      place.name, place.city, place.district, place.address, place.businessAreaName, ...(place.geoLabels ?? []),
       ...(place.cuisineSlugs?.map((slug) => cuisineLabels[slug] ?? slug) ?? []),
       ...place.sceneTags.map((slug) => sceneTagLabels[slug] ?? slug), ...(place.recommendedItems ?? []), place.review,
     ].filter(Boolean).join(" ").toLocaleLowerCase("zh-CN");
