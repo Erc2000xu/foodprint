@@ -37,7 +37,7 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
   const fields = z.object({
     poi_id: z.string().trim().min(1).max(160), name: z.string().trim().min(1).max(160), branch_name: z.string().trim().max(100).optional(),
     address: z.string().trim().max(300).optional(), city: z.string().trim().max(80).optional(), district: z.string().trim().max(80).optional(),
-    latitude: z.coerce.number().min(-90).max(90), longitude: z.coerce.number().min(-180).max(180), primary_category: z.enum(["restaurant", "cafe", "drinks", "bar", "bakery_dessert", "street_food", "other_food_drink"]),
+    latitude: z.coerce.number().min(-90).max(90), longitude: z.coerce.number().min(-180).max(180), primary_category: z.enum(["restaurant", "cafe", "drinks", "bar", "bakery_dessert", "other_food_drink"]),
     strength: z.coerce.number().int().min(1).max(3), opinion_tags: z.array(z.enum(["tasty", "comfortable", "good_for_chat", "good_value"])).min(1).max(2), visited_on: z.string().date(),
     note: z.string().trim().max(1000).optional(), dishes: z.string().max(400).optional(), anonymous: z.literal("on").optional(), attested: z.literal("on"),
     cuisine_slug: z.enum(cuisineSlugs),
@@ -48,26 +48,17 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
   const photoDimensions = formData.getAll("photo_dimensions").map((item) => typeof item === "string" ? /^([1-9]\d{0,4})x([1-9]\d{0,4})$/.exec(item) : null);
   if (photos.length > 9) return { error: "单次最多上传 9 张照片。" };
   if (photos.some((photo) => photo.type !== "image/webp" || photo.size > 1_572_864)) return { error: "照片需要是 1.5MB 以内的 WebP 图片。" };
-  const { data, error } = await activeGroup.supabase.rpc("save_place_mark", {
+  const items = (value.dishes ?? "").split(/[,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 12);
+  const { data, error } = await activeGroup.supabase.rpc("save_candidate_promotion_mark", {
     p_group_id: activeGroup.groupId, p_source_provider: "amap", p_source_poi_id: value.poi_id, p_name: value.name, p_branch_name: value.branch_name ?? null,
     p_address: value.address ?? null, p_city: value.city ?? null, p_district: value.district ?? null, p_latitude: value.latitude, p_longitude: value.longitude,
     p_coordinate_system: "GCJ-02", p_primary_category: value.primary_category, p_overall_rating: [3, 4, 5][value.strength - 1], p_would_recommend: true,
-    p_experience_attested: true, p_first_visited_on: value.visited_on, p_last_visited_on: value.visited_on, p_short_review: value.note ?? null,
-    p_recommended_items: (value.dishes ?? "").split(/[,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 12), p_price_per_person: null,
-    p_quality_rating: null, p_value_rating: null, p_environment_rating: null, p_service_rating: null, p_uniqueness_rating: null, p_would_revisit: null,
+    p_experience_attested: true, p_visited_on: value.visited_on, p_short_review: value.note ?? null,
+    p_recommended_items: items, p_cuisine_slugs: [value.cuisine_slug], p_strength: value.strength,
+    p_tags: value.opinion_tags, p_is_anonymous: value.anonymous === "on",
   });
   if (error || !data?.[0]?.mark_id) return { error: error?.message ?? "保存标记失败。" };
-  const { error: cuisineError } = await activeGroup.supabase.rpc("set_group_place_cuisines", {
-    p_group_place_id: data[0].group_place_id,
-    p_cuisine_slugs: [value.cuisine_slug],
-  });
-  if (cuisineError) return { error: "真实标记已保存，但菜系暂未保存：" + cuisineError.message };
-  const { data: visitData, error: visitError } = await activeGroup.supabase.rpc("record_place_visit", {
-    p_group_place_id: data[0].group_place_id, p_visited_on: value.visited_on, p_opinion_changed: true, p_strength: value.strength,
-    p_tags: value.opinion_tags, p_note: value.note ?? null, p_dishes: (value.dishes ?? "").split(/[,，]/).map((dish) => dish.trim()).filter(Boolean).slice(0, 12), p_is_anonymous: value.anonymous === "on",
-  });
-  if (visitError || !visitData?.[0]?.visit_record_id) return { error: `地点已收录，但这顿饭暂未保存：${visitError?.message ?? "请稍后重试。"}` };
-  const visitRecordId = visitData[0].visit_record_id as string;
+  const visitRecordId = data[0].visit_record_id as string;
   if (photos.length) {
     const { count, error: countError } = await activeGroup.supabase.from("photos").select("id", { count: "exact", head: true }).eq("visit_record_id", visitRecordId).is("deleted_at", null);
     if (countError) return { error: `真实标记已保存，但无法读取已有照片：${countError.message}` };
@@ -97,6 +88,7 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     body: { operation: "business_area_backfill", groupPlaceId: data[0].group_place_id },
   }).catch(() => undefined);
   revalidatePath("/");
+  revalidatePath("/try");
   revalidatePath(`/place/${data[0].group_place_id}`);
   return { success: "第一顿已记下，地点已加入共同地图。" };
 }

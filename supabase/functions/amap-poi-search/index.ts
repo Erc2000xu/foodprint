@@ -63,7 +63,7 @@ Deno.serve(async (request) => {
     if (membershipError) throw membershipError;
     if (!memberships?.length) return response({ error: "你尚未加入可用的共同地图。" }, 403, origin);
 
-    const body = await request.json() as { operation?: unknown; keyword?: unknown; location?: { latitude?: unknown; longitude?: unknown }; groupPlaceId?: unknown };
+    const body = await request.json() as { operation?: unknown; keyword?: unknown; location?: { latitude?: unknown; longitude?: unknown }; groupPlaceId?: unknown; placeId?: unknown };
     const operation = body.operation === "districts" ? "districts" : body.operation === "business_area_backfill" ? "business_area_backfill" : "poi_search";
     const keyword = typeof body.keyword === "string" ? body.keyword.trim() : "";
     if (operation === "poi_search" && (keyword.length < 2 || keyword.length > 80)) return response({ error: "请输入 2 至 80 个字符的地点名称。" }, 400, origin);
@@ -96,10 +96,15 @@ Deno.serve(async (request) => {
       if (body.groupPlaceId !== undefined && (typeof body.groupPlaceId !== "string" || !uuidPattern.test(body.groupPlaceId))) {
         return response({ error: "地点信息无效。" }, 400, origin);
       }
+      if (body.placeId !== undefined && (typeof body.placeId !== "string" || !uuidPattern.test(body.placeId))) {
+        return response({ error: "地点信息无效。" }, 400, origin);
+      }
       const groupPlaceId = typeof body.groupPlaceId === "string" ? body.groupPlaceId : null;
+      const placeId = typeof body.placeId === "string" ? body.placeId : null;
       const { data: candidates, error: candidateError } = await supabase.rpc("list_amap_business_area_backfill_candidates", {
         p_group_place_id: groupPlaceId,
-        p_limit: groupPlaceId ? 1 : 3,
+        p_place_id: placeId,
+        p_limit: groupPlaceId || placeId ? 1 : 3,
       });
       if (candidateError) throw candidateError;
       const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
