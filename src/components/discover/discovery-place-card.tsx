@@ -6,6 +6,7 @@ import { WishlistToggle } from "@/components/discover/wishlist-toggle";
 import { BowlIcon, toBowlLevel } from "@/components/recommendation/bowl-icon";
 import { displayAmapLocationChain } from "@/lib/amap/location-display";
 import { sceneTagLabels } from "@/lib/mark-options";
+import { PlaceManagementControl } from "@/components/place/place-management-control";
 
 const bowlLabels = ["", "值得去", "想再去", "会专门去"];
 
@@ -15,12 +16,14 @@ export function DiscoveryPlaceCard({
   cuisineLabel,
   categoryLabel,
   nearbyLabel,
+  canManage = false,
 }: {
   place: MapPlace;
   href: string;
   cuisineLabel?: string;
   categoryLabel: string;
   nearbyLabel?: string;
+  canManage?: boolean;
 }) {
   const dishes = place.recommendedItems ?? [];
   const shownDishes = dishes.slice(0, 2);
@@ -29,7 +32,7 @@ export function DiscoveryPlaceCard({
   const hasOpinionCounts = Object.values(place.goodTagCounts ?? {}).some((count) => count > 0);
 
   return <article className="home-place-card-wrap">
-    <div className="home-place-card">
+    <div className="home-place-card">{canManage && <PlaceManagementControl groupPlaceId={place.id} placeName={place.name} />}
       <div className="home-place-card__media">
         <Link href={href} className="home-place-card__photo-link" aria-label={`查看 ${place.name}`}>
           <div className="home-place-card__photo">

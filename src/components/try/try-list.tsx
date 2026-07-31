@@ -21,6 +21,7 @@ type CandidateCard = {
   expectation: string;
   creatorName: string;
   isMine: boolean;
+  canManage: boolean;
 };
 
 const initial: CandidateResult = {};
@@ -67,7 +68,10 @@ function CandidateActions({ candidate }: { candidate: CandidateCard }) {
     if (result.success) { setEditing(false); router.refresh(); }
   });
   const remove = () => startTransition(async () => {
-    const result = await deletePlaceCandidate(candidate.id);
+    const reason = candidate.isMine ? null : window.prompt("请填写移除候选的原因（1–280 字）：");
+    if (!candidate.isMine && (!reason || !reason.trim())) return;
+    if (!window.confirm(`从“去试试”移除“${candidate.name}”？处理记录会保留。`)) return;
+    const result = await deletePlaceCandidate(candidate.id, reason ?? undefined);
     setMessage(result);
     if (result.success) router.refresh();
   });
@@ -75,10 +79,11 @@ function CandidateActions({ candidate }: { candidate: CandidateCard }) {
   return <div className="candidate-actions">
     {!verifying && <><a className="candidate-navigation" href={amapNavigationUrl(candidate)} target="_blank" rel="noreferrer"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21 3-7.6 18-3.7-8.7L3 8.6 21 3Z" /><path d="m9.7 12.3 4.1-4.1" /></svg>导航去这里</a><button className="candidate-verify-button" type="button" onClick={() => { setMessage({}); setVerifying(true); }}>我去过了</button></>}
     {candidate.isMine && !verifying && <button className="text-button" type="button" onClick={() => { setMessage({}); setEditing(!editing); }}>{editing ? "收起编辑" : "编辑"}</button>}
+    {(candidate.isMine || candidate.canManage) && !verifying && !editing && <button className="text-button text-button--danger" disabled={pending} onClick={remove} type="button">移除候选</button>}
     {editing && <div className="candidate-edit">
       <label>从哪里听说的 <span>可选</span><input value={heardFrom} maxLength={120} onChange={(event) => setHeardFrom(event.target.value)} placeholder="朋友、短视频、路过时看到…" /></label>
       <label>为什么想试 <span>可选</span><textarea value={expectation} maxLength={280} onChange={(event) => setExpectation(event.target.value)} placeholder="一句自己的期待" /></label>
-      <div><button className="secondary-button" type="button" disabled={pending} onClick={saveEdit}>{pending ? "正在保存…" : "保存"}</button><button className="danger-button" type="button" disabled={pending} onClick={remove}>删除候选</button></div>
+      <div><button className="secondary-button" type="button" disabled={pending} onClick={saveEdit}>{pending ? "正在保存…" : "保存"}</button><button className="danger-button" type="button" disabled={pending} onClick={remove}>移除候选</button></div>
     </div>}
     {verifying && <div className="candidate-verification">
       <strong>这家值得推荐吗？</strong>

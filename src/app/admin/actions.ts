@@ -7,6 +7,48 @@ import { createClient } from "@/lib/supabase/server";
 
 export type InviteResult = { error?: string; inviteUrl?: string };
 export type ManagementResult = { error?: string; success?: string };
+export type PlaceManagementResult = ManagementResult;
+
+export async function archiveGroupPlace(_: PlaceManagementResult, formData: FormData): Promise<PlaceManagementResult> {
+  const groupPlaceId = z.string().uuid().safeParse(formData.get("group_place_id"));
+  const reason = z.string().trim().min(1).max(280).safeParse(formData.get("reason"));
+  const understood = formData.get("understood") === "on";
+  if (!groupPlaceId.success || !reason.success || !understood) return { error: "请填写下架原因，并确认这是对整个小组地点的操作。" };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("archive_group_place", { p_group_place_id: groupPlaceId.data, p_reason: reason.data });
+  if (error) return { error: error.message };
+  revalidatePath("/"); revalidatePath("/admin"); revalidatePath(`/place/${groupPlaceId.data}`); revalidatePath("/activity");
+  return { success: "地点已下架；历史内容已保留，可在地点与内容管理中恢复。" };
+}
+
+export async function restoreGroupPlace(_: PlaceManagementResult, formData: FormData): Promise<PlaceManagementResult> {
+  const groupPlaceId = z.string().uuid().safeParse(formData.get("group_place_id"));
+  if (!groupPlaceId.success) return { error: "地点信息无效。" };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("restore_group_place", { p_group_place_id: groupPlaceId.data });
+  if (error) return { error: error.message };
+  revalidatePath("/"); revalidatePath("/admin"); revalidatePath(`/place/${groupPlaceId.data}`); revalidatePath("/activity");
+  return { success: data?.[0]?.current_status === "inactive_no_marks" ? "地点已恢复为待真实推荐状态。" : "地点已恢复到发现和地图。" };
+}
+
+export async function restoreHiddenContent(_: PlaceManagementResult, formData: FormData): Promise<PlaceManagementResult> {
+  const id = z.string().uuid().safeParse(formData.get("content_id")); const type = z.enum(["visit", "photo"]).safeParse(formData.get("content_type"));
+  if (!id.success || !type.success) return { error: "内容信息无效。" };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc(type.data === "visit" ? "restore_group_visit_record" : "restore_group_photo", { [type.data === "visit" ? "p_visit_record_id" : "p_photo_id"]: id.data });
+  if (error) return { error: error.message };
+  revalidatePath("/"); revalidatePath("/admin"); revalidatePath("/activity"); if (data) revalidatePath(`/place/${data}`);
+  return { success: "内容已恢复显示。" };
+}
+
+export async function restorePlaceCandidate(_: PlaceManagementResult, formData: FormData): Promise<PlaceManagementResult> {
+  const id = z.string().uuid().safeParse(formData.get("candidate_id"));
+  if (!id.success) return { error: "候选地点信息无效。" };
+  const supabase = await createClient(); const { error } = await supabase.rpc("restore_place_candidate", { p_candidate_id: id.data });
+  if (error) return { error: error.message };
+  revalidatePath("/try"); revalidatePath("/admin");
+  return { success: "候选已恢复到去试试。" };
+}
 
 export async function leaveActiveGroup(_: ManagementResult, formData: FormData): Promise<ManagementResult> {
   const groupId = z.string().uuid().safeParse(formData.get("group_id"));
