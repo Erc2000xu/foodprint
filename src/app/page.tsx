@@ -15,6 +15,8 @@ export default async function Home() {
   const supabase = await createClient();
   const groupId = await getActiveDiscoveryGroup(supabase);
   if (!groupId) redirect("/login");
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: membership } = user ? await supabase.from("group_members").select("role").eq("group_id", groupId).eq("user_id", user.id).eq("status", "active").maybeSingle() : { data: null };
   const { places } = await loadDiscoveryData(supabase, groupId);
-  return <AppShell activeNav="发现"><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser places={places} cuisineOptions={cuisineOptions} /></Suspense></AppShell>;
+  return <AppShell activeNav="发现"><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser canManage={membership?.role === "owner" || membership?.role === "admin"} places={places} cuisineOptions={cuisineOptions} /></Suspense></AppShell>;
 }
