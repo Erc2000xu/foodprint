@@ -38,7 +38,7 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     poi_id: z.string().trim().min(1).max(160), name: z.string().trim().min(1).max(160), branch_name: z.string().trim().max(100).optional(),
     address: z.string().trim().max(300).optional(), city: z.string().trim().max(80).optional(), district: z.string().trim().max(80).optional(),
     latitude: z.coerce.number().min(-90).max(90), longitude: z.coerce.number().min(-180).max(180), primary_category: z.enum(["restaurant", "cafe", "drinks", "bar", "bakery_dessert", "other_food_drink"]),
-    strength: z.coerce.number().int().min(1).max(3), opinion_tags: z.array(z.enum(["tasty", "comfortable", "good_for_chat", "good_value"])).min(1).max(2), visited_on: z.string().date(),
+    strength: z.coerce.number().int().min(1).max(3), opinion_tags: z.array(z.enum(["tasty", "comfortable", "good_for_chat", "good_value"])).min(1).max(4), visited_on: z.string().date(),
     note: z.string().trim().max(1000).optional(), dishes: z.string().max(400).optional(), anonymous: z.literal("on").optional(), attested: z.literal("on"),
     cuisine_slug: z.enum(cuisineSlugs),
   }).safeParse({ ...Object.fromEntries(formData), opinion_tags: formData.getAll("opinion_tags") });
@@ -107,7 +107,7 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
     visited_on: z.string().date(),
     opinion_changed: z.enum(["true", "false"]),
     strength: z.preprocess((value) => value === "" || value === null ? undefined : value, z.coerce.number().int().min(1).max(3).optional()),
-    tags: z.array(z.enum(["tasty", "comfortable", "good_for_chat", "good_value"])).max(2),
+    tags: z.array(z.enum(["tasty", "comfortable", "good_for_chat", "good_value"])).max(4),
     note: z.string().trim().max(1000).optional(),
     dishes: z.string().max(400).optional(),
     anonymous: z.literal("on").optional(),
