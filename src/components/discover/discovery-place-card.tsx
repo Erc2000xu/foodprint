@@ -32,7 +32,7 @@ export function DiscoveryPlaceCard({
   const hasOpinionCounts = Object.values(place.goodTagCounts ?? {}).some((count) => count > 0);
 
   return <article className="home-place-card-wrap">
-    <div className="home-place-card">{canManage && <PlaceManagementControl groupPlaceId={place.id} placeName={place.name} />}
+    <div className={`home-place-card${canManage ? " home-place-card--manageable" : ""}`}>{canManage && <PlaceManagementControl groupPlaceId={place.id} placeName={place.name} />}
       <div className="home-place-card__media">
         <Link href={href} className="home-place-card__photo-link" aria-label={`查看 ${place.name}`}>
           <div className="home-place-card__photo">
