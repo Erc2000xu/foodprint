@@ -72,12 +72,12 @@ export async function updatePlaceCandidate(candidateIdValue: string, heardFrom: 
   return { success: "候选信息已更新。" };
 }
 
-export async function deletePlaceCandidate(candidateIdValue: string): Promise<CandidateResult> {
+export async function deletePlaceCandidate(candidateIdValue: string, reason?: string): Promise<CandidateResult> {
   const parsed = candidateId.safeParse(candidateIdValue);
   if (!parsed.success) return { error: "候选地点信息无效。" };
   const activeGroup = await getActiveGroupId();
   if ("error" in activeGroup) return { error: activeGroup.error };
-  const { error } = await activeGroup.supabase.rpc("delete_place_candidate", { p_candidate_id: parsed.data });
+  const { error } = await activeGroup.supabase.rpc("remove_place_candidate", { p_candidate_id: parsed.data, p_reason: reason?.trim() || null });
   if (error) return { error: error.message };
   revalidatePath("/try");
   return { success: "已从去试试移除。" };

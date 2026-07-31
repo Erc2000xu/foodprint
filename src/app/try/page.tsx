@@ -7,7 +7,7 @@ export default async function TryPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/try");
-  const { data: memberships } = await supabase.from("group_members").select("group_id").eq("user_id", user.id).eq("status", "active").limit(1);
+  const { data: memberships } = await supabase.from("group_members").select("group_id, role").eq("user_id", user.id).eq("status", "active").limit(1);
   const groupId = memberships?.[0]?.group_id;
   if (!groupId) redirect("/admin");
   const { data: candidates } = await supabase.from("place_candidates")
@@ -27,7 +27,7 @@ export default async function TryPage() {
     return [{
       id: candidate.id, name: place.name, address: place.address ?? "", city: place.city ?? "", district: place.district ?? "",
       heardFrom: candidate.heard_from ?? "", expectation: candidate.expectation ?? "", creatorName: profileById.get(candidate.created_by)?.display_name ?? "成员",
-      isMine: candidate.created_by === user.id,
+      isMine: candidate.created_by === user.id, canManage: ["owner", "admin"].includes(memberships?.[0]?.role ?? ""),
     }];
   });
   return <AppShell activeNav="去试试"><TryList candidates={cards} /></AppShell>;

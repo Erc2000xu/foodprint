@@ -4,7 +4,6 @@ export const categoryOptions = [
   ["drinks", "茶饮/饮品"],
   ["bar", "酒吧 / Pub"],
   ["bakery_dessert", "烘焙 / 甜品"],
-  ["street_food", "小吃 / 街头餐饮"],
   ["other_food_drink", "其他餐饮"],
 ] as const;
 
@@ -16,7 +15,6 @@ export const qualityLabels: Record<PlaceCategory, string> = {
   drinks: "饮品质量",
   bar: "酒水 / 调酒",
   bakery_dessert: "甜品与烘焙",
-  street_food: "菜品 / 口味",
   other_food_drink: "出品质量",
 };
 
