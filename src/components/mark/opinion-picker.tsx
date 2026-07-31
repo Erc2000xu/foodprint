@@ -10,9 +10,11 @@ const strengths = [
   { value: 3, label: "会专门去", description: "值得特意安排一趟" },
 ];
 
+const maxGoodAtTags = 4;
+
 export function OpinionPicker({ namePrefix, defaultStrength, defaultTags = [] }: { namePrefix: "tags" | "opinion_tags"; defaultStrength?: number; defaultTags?: string[] }) {
   const [selected, setSelected] = useState<GoodAtSlug[]>(defaultTags.filter((tag): tag is GoodAtSlug => goodAtOptions.some((item) => item.slug === tag)));
-  const toggle = (slug: GoodAtSlug) => setSelected((current) => current.includes(slug) ? current.filter((item) => item !== slug) : current.length < 2 ? [...current, slug] : current);
+  const toggle = (slug: GoodAtSlug) => setSelected((current) => current.includes(slug) ? current.filter((item) => item !== slug) : current.length < maxGoodAtTags ? [...current, slug] : current);
   return <>
     <fieldset className="meal-strength opinion-picker__strength">
       <legend>这次的推荐强度 <span className="required-dot" aria-label="必填">·</span></legend>
@@ -22,9 +24,9 @@ export function OpinionPicker({ namePrefix, defaultStrength, defaultTags = [] }:
       </label>)}</div>
     </fieldset>
     <fieldset className="scene-tag-picker opinion-picker__tags">
-      <legend>好在哪儿 <span className="required-dot" aria-label="必填">·</span><small>已选 {selected.length}/2</small></legend>
+      <legend>好在哪儿 <span className="required-dot" aria-label="必填">·</span><small>已选 {selected.length}/{maxGoodAtTags}</small></legend>
       <div className="good-at-picker">{goodAtOptions.map((option) => {
-        const checked = selected.includes(option.slug); const disabled = !checked && selected.length >= 2;
+        const checked = selected.includes(option.slug); const disabled = !checked && selected.length >= maxGoodAtTags;
         return <label className={`good-at-choice${checked ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`} key={option.slug}>
           <input checked={checked} disabled={disabled} name={namePrefix} onChange={() => toggle(option.slug)} required={selected.length === 0} type="checkbox" value={option.slug} />
           <GoodAtIcon slug={option.slug} size={56} /><span><b>{option.label}</b><small>{option.description}</small></span><em aria-hidden="true">✓</em>
