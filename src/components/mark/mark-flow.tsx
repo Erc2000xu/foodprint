@@ -64,7 +64,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
   const [searchError, setSearchError] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState<MarkCandidate | undefined>(initialCandidate);
-  const [alreadyInGroup, setAlreadyInGroup] = useState(Boolean(initialCandidate));
+  const [alreadyInGroup, setAlreadyInGroup] = useState(false);
   const [selectionError, setSelectionError] = useState("");
   const [primaryCategory, setPrimaryCategory] = useState<PlaceCategory>("restaurant");
   const [cuisine, setCuisine] = useState<(typeof cuisineOptions)[number][0]>("beijing_northern");
@@ -132,7 +132,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
 
   if (selected) return <section className="mark-card">
     <button className="back-button" type="button" onClick={() => { setSelected(undefined); setKeyword(""); }}>← 重新搜索</button>
-    <p className="eyebrow">{alreadyInGroup ? "朋友已经标记过这里" : "添加新地点"}</p>
+    <p className="eyebrow">{alreadyInGroup ? "朋友已经标记过这里" : initialCandidate ? "完成这次真实体验" : "添加新地点"}</p>
     <h1>{selected.name}</h1>
     <p className="selected-place">{selected.address || `${selected.city} ${selected.district}`}</p>
     <form className="mark-form" action={action}>

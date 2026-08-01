@@ -39,25 +39,29 @@ export async function createPlaceCandidate(_: CandidateResult, formData: FormDat
     p_latitude: value.latitude, p_longitude: value.longitude, p_heard_from: value.heard_from ?? null, p_expectation: value.expectation ?? null,
   });
   if (error) return { error: error.message.includes("already recommended") ? "这家已在发现中，无需再加入去试试。" : error.message.includes("cannot be added again") ? "这家暂时不能重复加入候选。" : error.message };
+  const { data: place } = await activeGroup.supabase.from("places").select("id").eq("source_provider", "amap").eq("source_poi_id", value.poi_id).maybeSingle();
+  // AMap cache is display-only: its failure must never prevent a valid private
+  // candidate from being saved. The edge function throttles repeated requests.
+  if (place?.id) await activeGroup.supabase.functions.invoke("amap-poi-search", {
+    body: { operation: "business_area_backfill", placeId: place.id },
+  }).catch(() => undefined);
   revalidatePath("/try");
   return { success: data?.[0]?.created ? "已加入去试试。" : "这家已在去试试列表里。" };
 }
 
 const candidateId = z.string().uuid();
 
-export async function resolvePlaceCandidate(candidateIdValue: string, wouldRecommend: boolean, experienceAttested: boolean): Promise<CandidateResult> {
+export async function dismissPlaceCandidate(candidateIdValue: string, experienceAttested: boolean): Promise<CandidateResult> {
   const parsed = candidateId.safeParse(candidateIdValue);
   if (!parsed.success || !experienceAttested) return { error: experienceAttested ? "候选地点信息无效。" : "请先确认这是你的真实体验。" };
   const activeGroup = await getActiveGroupId();
   if ("error" in activeGroup) return { error: activeGroup.error };
-  const { data, error } = await activeGroup.supabase.rpc("resolve_place_candidate", {
-    p_candidate_id: parsed.data, p_would_recommend: wouldRecommend, p_experience_attested: true,
+  const { error } = await activeGroup.supabase.rpc("dismiss_place_candidate", {
+    p_candidate_id: parsed.data, p_experience_attested: true,
   });
   if (error) return { error: error.message };
   revalidatePath("/try");
-  revalidatePath("/");
-  if (data?.[0]?.group_place_id) revalidatePath(`/place/${data[0].group_place_id}`);
-  return { success: wouldRecommend ? "已加入发现。你可以稍后在记一顿补充完整体验。" : "已从去试试移除；这条验证不会公开展示。" };
+  return { success: "已从去试试移除；这条验证不会公开展示。" };
 }
 
 export async function updatePlaceCandidate(candidateIdValue: string, heardFrom: string, expectation: string): Promise<CandidateResult> {
