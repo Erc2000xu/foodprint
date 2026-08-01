@@ -25,10 +25,14 @@ export function OpinionPicker({ namePrefix, defaultStrength, defaultTags = [] }:
     </fieldset>
     <fieldset className="scene-tag-picker opinion-picker__tags">
       <legend>好在哪儿 <span className="required-dot" aria-label="必填">·</span><small>已选 {selected.length}/{maxGoodAtTags}</small></legend>
+      {selected.map((slug) => <input key={`selected-${slug}`} name={namePrefix} type="hidden" value={slug} />)}
       <div className="good-at-picker">{goodAtOptions.map((option) => {
         const checked = selected.includes(option.slug); const disabled = !checked && selected.length >= maxGoodAtTags;
         return <label className={`good-at-choice${checked ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`} key={option.slug}>
-          <input checked={checked} disabled={disabled} name={namePrefix} onChange={() => toggle(option.slug)} required={selected.length === 0} type="checkbox" value={option.slug} />
+          {/* The hidden inputs above are the canonical submitted values. The
+              visible controls use a separate name so React-controlled
+              checkbox state cannot be lost during mobile form submission. */}
+          <input checked={checked} disabled={disabled} name={`${namePrefix}__ui`} onChange={() => toggle(option.slug)} required={selected.length === 0 && option.slug === goodAtOptions[0].slug} type="checkbox" value={option.slug} />
           <GoodAtIcon slug={option.slug} size={56} /><span><b>{option.label}</b><small>{option.description}</small></span><em aria-hidden="true">✓</em>
         </label>;
       })}</div>

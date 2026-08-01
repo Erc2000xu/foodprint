@@ -70,6 +70,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
   const [cuisine, setCuisine] = useState<(typeof cuisineOptions)[number][0]>("beijing_northern");
   const [userLocation, setUserLocation] = useState<UserLocation>();
   const [locationState, setLocationState] = useState("");
+  const [photosProcessing, setPhotosProcessing] = useState(false);
   const [isLookingUp, startLookup] = useTransition();
   const requestId = useRef(0);
   const [state, action, pending] = useActionState(savePlaceMark, initial);
@@ -135,7 +136,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
     <p className="eyebrow">{alreadyInGroup ? "朋友已经标记过这里" : initialCandidate ? "完成这次真实体验" : "添加新地点"}</p>
     <h1>{selected.name}</h1>
     <p className="selected-place">{selected.address || `${selected.city} ${selected.district}`}</p>
-    <form className="mark-form" action={action}>
+    <form className="mark-form" action={action} onSubmit={(event) => { if (photosProcessing) event.preventDefault(); }}>
       <input type="hidden" name="poi_id" value={selected.poiId} />
       <input type="hidden" name="name" value={selected.name} />
       <input type="hidden" name="address" value={selected.address} />
@@ -153,11 +154,11 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       <section className="mark-form-section"><h2>说说为什么推荐</h2><OpinionPicker namePrefix="opinion_tags" /></section>
       <label>推荐菜 / 饮品 <span className="optional-mark">可选</span><input name="dishes" maxLength={400} placeholder="用逗号分隔，例如：手冲咖啡，巴斯克" /></label>
       <label>饭后感受 <span className="optional-mark">可选</span><textarea name="note" maxLength={1000} placeholder="想留下的真实感受" /></label>
-      <PhotoPicker />
+      <PhotoPicker onProcessingChange={setPhotosProcessing} />
       <label className="attestation"><input name="anonymous" type="checkbox" /> <span>匿名分享给小组<br /><small>大家会看到“匿名成员”；你自己仍可管理和导出这条记录。</small></span></label>
       {state.error && <p className="form-error">{state.error}</p>}
       <p className="form-completion-note">完成真实推荐确认、到访日期、地点类型、主菜系、推荐强度和好在哪儿后即可保存。</p>
-      <button className="primary-button" disabled={pending}>{pending ? "正在保存…" : "记下这顿饭"}</button>
+      <button className="primary-button" disabled={pending || photosProcessing}>{pending ? "正在保存…" : photosProcessing ? "正在处理照片…" : "记下这顿饭"}</button>
     </form>
   </section>;
 

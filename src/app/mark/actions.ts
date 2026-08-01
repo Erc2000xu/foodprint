@@ -11,6 +11,20 @@ export type VisitResult = { error?: string; success?: string; warning?: string }
 
 const cuisineSlugs = cuisineOptions.map(([slug]) => slug) as [string, ...string[]];
 
+function validationMessage(issues: ReadonlyArray<{ path: readonly unknown[]; code: string }>, fallback: string) {
+  const issue = issues[0];
+  const field = String(issue?.path[0] ?? "");
+  if (field === "opinion_tags" || field === "tags") {
+    return issue?.code === "too_small" ? "至少选择一项“好在哪儿”。" : "“好在哪儿”最多选择 4 项。";
+  }
+  if (field === "strength") return "请选择推荐强度。";
+  if (field === "visited_on") return "请选择到访日期。";
+  if (field === "attested") return "请确认你亲自去过并愿意推荐。";
+  if (field === "primary_category") return "请选择地点类型。";
+  if (field === "cuisine_slug") return "请选择主菜系。";
+  return fallback;
+}
+
 async function getActiveGroupId() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -43,7 +57,7 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     note: z.string().trim().max(1000).optional(), dishes: z.string().max(400).optional(), anonymous: z.literal("on").optional(), attested: z.literal("on"),
     cuisine_slug: z.enum(cuisineSlugs),
   }).safeParse({ ...Object.fromEntries(formData), opinion_tags: formData.getAll("opinion_tags") });
-  if (!fields.success) return { error: fields.error.issues[0]?.message ?? "请检查填写内容。" };
+  if (!fields.success) return { error: validationMessage(fields.error.issues, "请检查填写内容。") };
   const value = fields.data;
   const photos = formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0);
   const photoDimensions = formData.getAll("photo_dimensions").map((item) => typeof item === "string" ? /^([1-9]\d{0,4})x([1-9]\d{0,4})$/.exec(item) : null);
@@ -110,7 +124,7 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
     dishes: z.string().max(400).optional(),
     anonymous: z.literal("on").optional(),
   }).safeParse({ ...Object.fromEntries(formData), tags: formData.getAll("tags") });
-  if (!fields.success) return { error: fields.error.issues[0]?.message ?? "请检查这顿饭的内容。" };
+  if (!fields.success) return { error: validationMessage(fields.error.issues, "请检查这顿饭的内容。") };
 
   const value = fields.data;
   const photos = formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0);

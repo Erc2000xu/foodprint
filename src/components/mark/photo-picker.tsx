@@ -33,7 +33,7 @@ async function compressPhoto(file: File): Promise<PreparedPhoto> {
   } finally { URL.revokeObjectURL(sourceUrl); }
 }
 
-export function PhotoPicker() {
+export function PhotoPicker({ onProcessingChange }: { onProcessingChange?: (processing: boolean) => void } = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [previews, setPreviews] = useState<Preview[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -42,6 +42,7 @@ export function PhotoPicker() {
   const urlsRef = useRef<string[]>([]);
 
   useEffect(() => () => urlsRef.current.forEach((url) => URL.revokeObjectURL(url)), []);
+  useEffect(() => { onProcessingChange?.(processing); }, [onProcessingChange, processing]);
 
   const syncInput = (files: File[]) => {
     const transfer = new DataTransfer(); files.forEach((file) => transfer.items.add(file));
