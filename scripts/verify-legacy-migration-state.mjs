@@ -13,16 +13,21 @@ if (!existsSync(schemaPath)) {
 }
 
 const schema = readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n");
-const failures = [];
+// pg_dump may quote every PostgreSQL identifier. Quotes are semantically
+// irrelevant for the known lower-case public schema objects, so normalize them
+// before checking to support both `public.table_name` and
+// `"public"."table_name"` output formats.
+const matchableSchema = schema.replaceAll('"', "");
+const failures = new Set();
 let verified = 0;
 
 function check(label, pattern) {
-  if (pattern.test(schema)) {
+  if (pattern.test(matchableSchema)) {
     verified += 1;
     return;
   }
 
-  failures.push(label);
+  failures.add(label);
 }
 
 function escapeRegExp(value) {
@@ -30,19 +35,24 @@ function escapeRegExp(value) {
 }
 
 function tableDefinition(tableName) {
-  const start = schema.indexOf(`CREATE TABLE public.${tableName} (`);
-  if (start === -1) {
-    failures.push(`table public.${tableName}`);
+  const declaration = new RegExp(
+    `CREATE\\s+TABLE(?:\\s+IF\\s+NOT\\s+EXISTS)?\\s+public\\.${escapeRegExp(tableName)}\\s*\\(`,
+    "i",
+  ).exec(matchableSchema);
+
+  if (!declaration || declaration.index === undefined) {
+    failures.add(`table public.${tableName}`);
     return "";
   }
 
-  const end = schema.indexOf("\n);", start);
+  const start = declaration.index;
+  const end = matchableSchema.indexOf("\n);", start);
   if (end === -1) {
-    failures.push(`complete definition for public.${tableName}`);
+    failures.add(`complete definition for public.${tableName}`);
     return "";
   }
 
-  return schema.slice(start, end);
+  return matchableSchema.slice(start, end);
 }
 
 function checkTableColumn(tableName, columnName, typePattern) {
@@ -52,13 +62,13 @@ function checkTableColumn(tableName, columnName, typePattern) {
     return;
   }
 
-  failures.push(`column public.${tableName}.${columnName}`);
+  failures.add(`column public.${tableName}.${columnName}`);
 }
 
 function checkFunction(functionName) {
   check(
     `function public.${functionName}`,
-    new RegExp(`CREATE(?: OR REPLACE)? FUNCTION public\\.${escapeRegExp(functionName)}\\(`),
+    new RegExp(`CREATE(?:\\s+OR\\s+REPLACE)?\\s+FUNCTION\\s+public\\.${escapeRegExp(functionName)}\\s*\\(`, "i"),
   );
 }
 
@@ -84,7 +94,7 @@ for (const index of [
   "visit_records_hidden_management_idx",
   "photos_hidden_management_idx",
 ]) {
-  check(`index ${index}`, new RegExp(`CREATE INDEX ${escapeRegExp(index)}\\b`));
+  check(`index ${index}`, new RegExp(`CREATE\\s+(?:UNIQUE\\s+)?INDEX(?:\\s+IF\\s+NOT\\s+EXISTS)?\\s+${escapeRegExp(index)}\\b`, "i"));
 }
 
 for (const functionName of [
@@ -110,12 +120,17 @@ for (const constraint of ["current_opinions_tags_max_four", "visit_records_tags_
   check(`constraint ${constraint}`, new RegExp(`\\b${escapeRegExp(constraint)}\\b`));
 }
 
-const visitFunctionStart = schema.indexOf("CREATE FUNCTION public.record_place_visit(");
-const visitFunctionEnd = visitFunctionStart === -1 ? -1 : schema.indexOf("\nALTER FUNCTION public.record_place_visit", visitFunctionStart);
-const visitFunction = visitFunctionStart === -1 || visitFunctionEnd === -1 ? "" : schema.slice(visitFunctionStart, visitFunctionEnd);
+const visitFunctionDeclaration = /CREATE(?:\s+OR\s+REPLACE)?\s+FUNCTION\s+public\.record_place_visit\s*\(/i.exec(matchableSchema);
+const visitFunctionStart = visitFunctionDeclaration?.index ?? -1;
+const visitFunctionEnd = visitFunctionStart === -1
+  ? -1
+  : matchableSchema.indexOf("\nALTER FUNCTION public.record_place_visit", visitFunctionStart);
+const visitFunction = visitFunctionStart === -1 || visitFunctionEnd === -1
+  ? ""
+  : matchableSchema.slice(visitFunctionStart, visitFunctionEnd);
 
 if (!visitFunction) {
-  failures.push("complete definition for function public.record_place_visit");
+  failures.add("complete definition for function public.record_place_visit");
 } else {
   for (const [label, pattern] of [
     ["record_place_visit supports one to four tags", /cardinality\(v_tags\)\s+not\s+between\s+1\s+and\s+4/],
@@ -127,7 +142,7 @@ if (!visitFunction) {
     if (pattern.test(visitFunction)) {
       verified += 1;
     } else {
-      failures.push(label);
+      failures.add(label);
     }
   }
 }
@@ -136,10 +151,10 @@ if (!visitFunction) {
 checkFunction("normalize_group_place_archive_metadata");
 check(
   "trigger group_places_normalize_archive_metadata",
-  /CREATE TRIGGER group_places_normalize_archive_metadata[\s\S]*?EXECUTE FUNCTION public\.normalize_group_place_archive_metadata\(\)/,
+  /CREATE\s+TRIGGER\s+group_places_normalize_archive_metadata[\s\S]*?EXECUTE\s+FUNCTION\s+public\.normalize_group_place_archive_metadata\(\)/i,
 );
 
-if (failures.length > 0) {
+if (failures.size > 0) {
   console.error("Legacy migration state is not safe to repair. Missing or incomplete checks:");
   for (const failure of failures) {
     console.error(`- ${failure}`);
