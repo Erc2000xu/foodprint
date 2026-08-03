@@ -1,0 +1,66 @@
+name: Repair legacy migration history
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type REPAIR_LEGACY_HISTORY to mark the three verified legacy versions as applied
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foodprint-production-legacy-migration-history-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      REPAIR_CONFIRMATION: ${{ inputs.confirmation }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - name: Require an intentional history repair from main
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Migration-history repair must be manually started from the main branch."
+            exit 1
+          fi
+          if [ "$REPAIR_CONFIRMATION" != "REPAIR_LEGACY_HISTORY" ]; then
+            echo "::error::Enter REPAIR_LEGACY_HISTORY exactly to confirm this history-only repair."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Verify repository secrets
+        shell: bash
+        run: |
+          failed=0
+          for setting in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID; do
+            if [ -z "${!setting}" ]; then
+              echo "::error::Missing repository Actions secret: ${setting}"
+              failed=1
+            fi
+          done
+          exit "$failed"
+      - name: Link the production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+      - name: Show migration history before repair
+        run: supabase migration list --linked
+      - name: Mark the three verified legacy versions as applied
+        shell: bash
+        run: |
+          set -euo pipefail
+          for version in 20260731100000 20260731110000 20260801100000; do
+            supabase migration repair "$version" --status applied --linked
+          done
+      - name: Show migration history after repair
+        run: supabase migration list --linked
