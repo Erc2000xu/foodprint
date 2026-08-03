@@ -149,14 +149,8 @@ if (!visitFunction) {
 
 // 20260801100000_v1_3_3_normalize_group_place_archive_metadata.sql
 checkFunction("normalize_group_place_archive_metadata");
-check(
-  "trigger group_places_normalize_archive_metadata",
-  // pg_dump may omit the `public.` qualifier for the trigger function when
-  // the dump already establishes that schema as the active search path. Keep
-  // the check strict about the trigger name, target table, row scope, and
-  // function name while accepting both equivalent renderings.
-  /CREATE\s+TRIGGER\s+group_places_normalize_archive_metadata\b[^;]*?ON\s+public\.group_places\s+FOR\s+EACH\s+ROW\s+EXECUTE\s+FUNCTION\s+(?:public\.)?normalize_group_place_archive_metadata\s*\(\)/i,
-);
+// The workflow verifies this trigger through pg_catalog rather than relying on
+// a pg_dump rendering. See scripts/verify-legacy-trigger-state.mjs.
 
 if (failures.size > 0) {
   console.error("Legacy migration state is not safe to repair. Missing or incomplete checks:");

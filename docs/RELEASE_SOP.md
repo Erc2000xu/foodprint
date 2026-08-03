@@ -1,14 +1,14 @@
 # 食迹 Foodprint｜免费版单生产环境发布与数据库迁移 SOP
 
-> 状态：已确认采用方案 B；完成一次性配置前，自动发布保持关闭
+> 状态：已确认采用方案 B；正式 Release workflow 保持关闭。迁移历史恢复完成前，既有 Vercel Git 自动部署暂时保留，之后再切换为 Deploy Hook。
 > 生效范围：任何需要进入 GitHub 的代码、测试、migration、Edge Function 或正式开发文档
 > 关联决策：[免费版单生产环境发布管道](decisions/2026-08-03-free-tier-release-pipeline.md)
 
 ## 1. 一句话规则
 
-**Codex 负责代码和 migration；GitHub Actions 是唯一可以写入远端 Supabase、部署 Edge Function、触发 Vercel 的执行者；项目负责人通过手动启动一次 Production workflow 作出最后发布决定。**
+**Codex 负责代码和 migration；GitHub Actions 是唯一可以写入远端 Supabase、部署 Edge Function、触发 Vercel Deploy Hook 的执行者；项目负责人通过手动启动一次 Production workflow 作出最后发布决定。**
 
-合入 main 只更新代码仓库，绝不会自动改动 Supabase 或 Vercel。任何 Codex 对话都不得改用本机 supabase db push、生产 SQL Editor 或 vercel --prod 来临时发布。失败时停在 workflow 的错误处处理，不能复制 SQL 绕过。
+合入 main 绝不会自动改动 Supabase。当前过渡期 Vercel 的既有 Git 集成仍可能生成部署，但这不是正式 Release；完成 Deploy Hook 切换后将关闭该行为。任何 Codex 对话都不得改用本机 supabase db push、生产 SQL Editor 或 vercel --prod 来临时发布。失败时停在 workflow 的错误处处理，不能复制 SQL 绕过。
 
 ## 2. 环境与分支
 
@@ -34,7 +34,7 @@ migration-integrity 会在 GitHub 临时 runner 上从零启动 Supabase，并�
 ### B. 合入 main
 
 1. 项目负责人确认 PR 范围、CI 结果和迁移风险后合入 main。
-2. 合入本身不触发数据库变更或 Vercel 部署。
+2. 合入本身绝不触发数据库变更。迁移历史恢复的过渡期内，既有 Vercel Git 集成仍可能为 main 生成部署；它不是正式 Release，也不会写入 Supabase。仅在 Deploy Hook 已验证且历史恢复完成后，才合入关闭 Git 自动部署的 vercel.json。
 3. 若 migration 包含删除、重写、大批量回填或权限放宽，先按 OPERATIONS.md 完成 Owner 数据导出，并在发布记录中说明影响和向前修复方式。
 
 ### C. 正式发布
@@ -119,7 +119,8 @@ GitHub Repository Actions secrets 使用以下固定名称：
 
 项目负责人只在浏览器完成账户与密钥操作；Codex 负责生成、核对和验证，但不索取任何 secret：
 
-1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。若本地有、远端 history 没有的旧版本，先运行 Verify legacy migration state；它只导出 public schema 到临时 runner 并核对旧迁移留下的对象，绝不写入数据、schema 或 history。只有两项审计都通过后，才可逐条批准 repair 为 applied，不重放 SQL。
+1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。若本地有、远端 history 没有的旧版本，先运行 Verify legacy migration state；它只导出 public schema 到临时 runner，并通过 PostgreSQL catalog 核对触发器，绝不写入数据、schema 或 history。只有两项审计都通过后，才可逐条批准 repair 为 applied，不重放 SQL。
+   - 如核对明确报告 `group_places_normalize_archive_metadata` 缺失，停止重跑核对器，改从 main 手动运行 **Reconcile legacy archive trigger**，并精确输入 `RECONCILE_LEGACY_TRIGGER`。该一次性恢复只执行仓库中已审阅的 SQL：事务内重建这一个触发器，随后自动完成全部旧迁移核对；不调用 Vercel Deploy Hook、不改 migration history。过渡期已有的 Vercel Git 自动部署仍按本节前述规则处理。
 2. 在 GitHub Repository Actions secrets 添加四个固定名称的生产凭据；不要发送给 Codex。
 3. 在 Vercel 创建一个指向 main 的 Production Deploy Hook，并核对 Production 环境变量。
 4. 在 Supabase 配置 production Edge Function secrets 与 Origin 白名单。
