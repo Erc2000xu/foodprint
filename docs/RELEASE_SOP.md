@@ -119,7 +119,8 @@ GitHub Repository Actions secrets 使用以下固定名称：
 
 项目负责人只在浏览器完成账户与密钥操作；Codex 负责生成、核对和验证，但不索取任何 secret：
 
-1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。若本地有、远端 history 没有的旧版本，先运行 Verify legacy migration state；它只导出 public schema 到临时 runner 并核对旧迁移留下的对象，绝不写入数据、schema 或 history。只有两项审计都通过后，才可逐条批准 repair 为 applied，不重放 SQL。
+1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。若本地有、远端 history 没有的旧版本，先运行 Verify legacy migration state；它只导出 public schema 到临时 runner，并通过 PostgreSQL catalog 核对触发器，绝不写入数据、schema 或 history。只有两项审计都通过后，才可逐条批准 repair 为 applied，不重放 SQL。
+   - 如核对明确报告 `group_places_normalize_archive_metadata` 缺失，停止重跑核对器，改从 main 手动运行 **Reconcile legacy archive trigger**，并精确输入 `RECONCILE_LEGACY_TRIGGER`。该一次性恢复只执行仓库中已审阅的 SQL：事务内重建这一个触发器，随后自动完成全部旧迁移核对；不部署应用、不触发 Vercel、不改 migration history。
 2. 在 GitHub Repository Actions secrets 添加四个固定名称的生产凭据；不要发送给 Codex。
 3. 在 Vercel 创建一个指向 main 的 Production Deploy Hook，并核对 Production 环境变量。
 4. 在 Supabase 配置 production Edge Function secrets 与 Origin 白名单。
