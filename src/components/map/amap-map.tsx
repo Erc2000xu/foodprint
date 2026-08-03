@@ -60,19 +60,19 @@ export function AMapMap({ apiKey, places }: { apiKey?: string; places: MapPlace[
           const marker = new AMap.Marker({
             position: [place.longitude, place.latitude],
             anchor: "bottom-center",
-            content: `<div class="foodprint-marker" aria-label="${place.name}，${place.bowlStrength ? `${place.bowlStrength} 层小碗` : `${place.averageRating.toFixed(1)} 分`}，${place.markCount} 人标记"><span>${place.bowlStrength ? `<img src="/icons/recommendation/bowl-level-${Math.max(1, Math.min(3, Math.round(place.bowlStrength)))}-ui.png" alt="" />` : place.averageRating.toFixed(1)}</span><i>${place.markCount}</i></div>`,
+            content: `<div class="foodprint-marker" aria-label="${place.name}，${place.bowlStrength ? `${place.bowlStrength} 层小碗` : `${place.averageRating.toFixed(1)} 分`}，${place.markCount} 位朋友吃过"><span>${place.bowlStrength ? `<img src="/icons/recommendation/bowl-level-${Math.max(1, Math.min(3, Math.round(place.bowlStrength)))}-ui.png" alt="" />` : place.averageRating.toFixed(1)}</span><i>${place.markCount}</i></div>`,
           });
           marker.on("click", () => window.location.assign(`/place/${place.id}`));
           mapInstance.add(marker);
         });
       } catch {
-        if (!destroyed) setError("地图暂时无法加载。请检查高德 Key、域名白名单和网络后重试。");
+        if (!destroyed) setError("地图暂时没有响应，请稍后再试。");
       }
     };
     void load();
     return () => { destroyed = true; map?.destroy(); };
   }, [apiKey, places]);
 
-  if (!apiKey) return <div className="map-fallback"><strong>地图服务尚未配置</strong><span>请在 Vercel 添加 NEXT_PUBLIC_AMAP_KEY 后重新部署。</span></div>;
-  return <div className="amap-container" ref={containerRef}>{error && <div className="map-fallback map-fallback--error"><strong>地图加载失败</strong><span>{error}</span></div>}</div>;
+  if (!apiKey) return <div className="map-fallback"><strong>地图暂时无法显示</strong><span>你仍可在列表中查找地点。</span></div>;
+  return <div className="amap-container" ref={containerRef}>{error && <div className="map-fallback map-fallback--error"><strong>地图暂时无法显示</strong><span>{error}</span></div>}</div>;
 }

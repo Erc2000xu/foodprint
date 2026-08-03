@@ -7,7 +7,7 @@ import { getActiveDiscoveryGroup, loadDiscoveryData } from "@/lib/discovery/serv
 import { createClient } from "@/lib/supabase/server";
 
 function DiscoveryFallback() {
-  return <div className="empty-note">正在加载发现内容…</div>;
+  return <div className="empty-note">正在打开发现…</div>;
 }
 
 export default async function Home() {
@@ -16,7 +16,8 @@ export default async function Home() {
   const groupId = await getActiveDiscoveryGroup(supabase);
   if (!groupId) redirect("/login");
   const { data: { user } } = await supabase.auth.getUser();
+  const { data: group } = await supabase.from("groups").select("name").eq("id", groupId).maybeSingle();
   const { data: membership } = user ? await supabase.from("group_members").select("role").eq("group_id", groupId).eq("user_id", user.id).eq("status", "active").maybeSingle() : { data: null };
   const { places } = await loadDiscoveryData(supabase, groupId);
-  return <AppShell activeNav="发现"><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser canManage={membership?.role === "owner" || membership?.role === "admin"} places={places} cuisineOptions={cuisineOptions} /></Suspense></AppShell>;
+  return <AppShell activeNav="发现" groupName={group?.name}><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser canManage={membership?.role === "owner" || membership?.role === "admin"} places={places} cuisineOptions={cuisineOptions} /></Suspense></AppShell>;
 }

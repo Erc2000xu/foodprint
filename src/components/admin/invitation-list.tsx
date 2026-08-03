@@ -43,7 +43,7 @@ function CopyInvitationLink({ inviteUrl }: { inviteUrl: string }) {
 }
 
 export function InvitationList({ invitations }: { invitations: InvitationSummary[] }) {
-  if (invitations.length === 0) return <p className="empty-note">还没有生成过邀请链接。</p>;
+  if (invitations.length === 0) return <p className="empty-note">还没有生成邀请链接。</p>;
   return <ul className="invitation-list">
     {invitations.map((invitation) => (
       <li key={invitation.id}>

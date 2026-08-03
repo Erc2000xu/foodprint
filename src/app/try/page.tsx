@@ -10,6 +10,7 @@ export default async function TryPage() {
   const { data: memberships } = await supabase.from("group_members").select("group_id, role").eq("user_id", user.id).eq("status", "active").limit(1);
   const groupId = memberships?.[0]?.group_id;
   if (!groupId) redirect("/admin");
+  const { data: group } = await supabase.from("groups").select("name").eq("id", groupId).maybeSingle();
   const { data: candidates } = await supabase.from("place_candidates")
     .select("id, place_id, heard_from, expectation, created_by, created_at")
     .eq("group_id", groupId).eq("status", "pending").order("created_at", { ascending: false });
@@ -32,5 +33,5 @@ export default async function TryPage() {
       isMine: candidate.created_by === user.id, canManage: ["owner", "admin"].includes(memberships?.[0]?.role ?? ""),
     }];
   });
-  return <AppShell activeNav="去试试"><TryList candidates={cards} /></AppShell>;
+  return <AppShell activeNav="去试试" groupName={group?.name}><TryList candidates={cards} /></AppShell>;
 }

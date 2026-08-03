@@ -3,16 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { userFacingError } from "@/lib/user-facing-error";
 
 export type CandidateResult = { error?: string; success?: string };
 
 async function getActiveGroupId() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { supabase, error: "请先登录。" as const };
+  if (!user) return { supabase, error: "请先登录后再继续。" as const };
   const { data: memberships } = await supabase.from("group_members").select("group_id").eq("user_id", user.id).eq("status", "active").limit(1);
   const groupId = memberships?.[0]?.group_id;
-  return groupId ? { supabase, groupId } : { supabase, error: "你尚未加入共同地图。" as const };
+  return groupId ? { supabase, groupId } : { supabase, error: "你还没有加入共同地图。" as const };
 }
 
 const candidateFields = z.object({
@@ -38,7 +39,7 @@ export async function createPlaceCandidate(_: CandidateResult, formData: FormDat
     p_address: value.address ?? null, p_city: value.city ?? null, p_district: value.district ?? null,
     p_latitude: value.latitude, p_longitude: value.longitude, p_heard_from: value.heard_from ?? null, p_expectation: value.expectation ?? null,
   });
-  if (error) return { error: error.message.includes("already recommended") ? "这家已在发现中，无需再加入去试试。" : error.message.includes("cannot be added again") ? "这家暂时不能重复加入候选。" : error.message };
+  if (error) return { error: error.message.includes("already recommended") ? "这家已在发现中，无需再加入去试试。" : error.message.includes("cannot be added again") ? "这家暂时不能重复加入候选。" : userFacingError(error) };
   const { data: place } = await activeGroup.supabase.from("places").select("id").eq("source_provider", "amap").eq("source_poi_id", value.poi_id).maybeSingle();
   // AMap cache is display-only: its failure must never prevent a valid private
   // candidate from being saved. The edge function throttles repeated requests.
@@ -46,7 +47,7 @@ export async function createPlaceCandidate(_: CandidateResult, formData: FormDat
     body: { operation: "business_area_backfill", placeId: place.id },
   }).catch(() => undefined);
   revalidatePath("/try");
-  return { success: data?.[0]?.created ? "已加入去试试。" : "这家已在去试试列表里。" };
+  return { success: data?.[0]?.created ? "已加入去试试。" : "这家已经在去试试列表中。" };
 }
 
 const candidateId = z.string().uuid();
@@ -59,9 +60,9 @@ export async function dismissPlaceCandidate(candidateIdValue: string, experience
   const { error } = await activeGroup.supabase.rpc("dismiss_place_candidate", {
     p_candidate_id: parsed.data, p_experience_attested: true,
   });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/try");
-  return { success: "已从去试试移除；这条验证不会公开展示。" };
+  return { success: "已从去试试移除；这次选择不会对外显示。" };
 }
 
 export async function updatePlaceCandidate(candidateIdValue: string, heardFrom: string, expectation: string): Promise<CandidateResult> {
@@ -71,7 +72,7 @@ export async function updatePlaceCandidate(candidateIdValue: string, heardFrom: 
   const activeGroup = await getActiveGroupId();
   if ("error" in activeGroup) return { error: activeGroup.error };
   const { error } = await activeGroup.supabase.rpc("update_place_candidate", { p_candidate_id: parsed.data, p_heard_from: heardFrom, p_expectation: expectation });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/try");
   return { success: "候选信息已更新。" };
 }
@@ -82,7 +83,7 @@ export async function deletePlaceCandidate(candidateIdValue: string, reason?: st
   const activeGroup = await getActiveGroupId();
   if ("error" in activeGroup) return { error: activeGroup.error };
   const { error } = await activeGroup.supabase.rpc("remove_place_candidate", { p_candidate_id: parsed.data, p_reason: reason?.trim() || null });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/try");
   return { success: "已从去试试移除。" };
 }

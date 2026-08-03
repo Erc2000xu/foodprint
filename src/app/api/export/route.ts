@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   if (!user) return Response.json({ error: "请先登录后再导出。" }, { status: 401 });
   const { data: memberships } = await supabase.from("group_members").select("group_id, role, status").eq("user_id", user.id).eq("status", "active").limit(1);
   const membership = memberships?.[0] as Member | undefined;
-  if (!membership) return Response.json({ error: "你尚未加入共同地图。" }, { status: 403 });
+  if (!membership) return Response.json({ error: "你还没有加入共同地图。" }, { status: 403 });
   if (scope === "group" && membership.role !== "owner") return Response.json({ error: "只有 Owner 可以导出整个共同地图。" }, { status: 403 });
 
   const adminKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

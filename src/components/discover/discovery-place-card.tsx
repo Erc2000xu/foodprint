@@ -36,7 +36,7 @@ export function DiscoveryPlaceCard({
       <div className="home-place-card__media">
         <Link href={href} className="home-place-card__photo-link" aria-label={`查看 ${place.name}`}>
           <div className="home-place-card__photo">
-            {place.coverPhotoUrl ? <img src={place.coverPhotoUrl} alt={`${place.name} 的真实照片`} /> : <span>食迹<br />推荐</span>}
+            {place.coverPhotoUrl ? <img src={place.coverPhotoUrl} alt={`${place.name} 的真实照片`} /> : <span>暂无照片</span>}
           </div>
         </Link>
         <WishlistToggle groupPlaceId={place.id} initialWanted={Boolean(place.savedForLater)} />
@@ -44,11 +44,11 @@ export function DiscoveryPlaceCard({
       <Link href={href} className="home-place-card__body">
         <p className="home-place-card__meta">{[cuisineLabel || categoryLabel, location].filter(Boolean).join(" · ")}</p>
         <h2>{place.name}</h2>
-        <p className="home-place-card__location">{nearbyLabel ? `近 ${nearbyLabel} · ` : ""}{place.pricePerPerson !== null && place.pricePerPerson !== undefined ? `人均 ¥${Math.round(place.pricePerPerson)}` : "人均待补充"}</p>
+        <p className="home-place-card__location">{nearbyLabel ? `靠近 ${nearbyLabel} · ` : ""}{place.pricePerPerson !== null && place.pricePerPerson !== undefined ? `人均 ¥${Math.round(place.pricePerPerson)}` : "人均待补充"}</p>
         {place.bowlStrength ? <div className="home-place-card__score-line">
           <BowlIcon level={toBowlLevel(place.bowlStrength)} size="md" />
           <span><b>{bowlLabels[toBowlLevel(place.bowlStrength)]}</b> · {place.markCount} 位朋友吃过</span>
-        </div> : place.markCount ? <div className="home-place-card__score-line"><b>{place.averageRating.toFixed(1)}</b><span>{place.markCount} 位朋友标记</span></div> : <div className="home-place-card__score-line"><b>新推荐</b><span>已由成员真实验证</span></div>}
+        </div> : place.markCount ? <div className="home-place-card__score-line"><b>{place.averageRating.toFixed(1)}</b><span>有 {place.markCount} 位朋友留过记录</span></div> : <div className="home-place-card__score-line"><b>新地点</b><span>已有朋友留下记录</span></div>}
         {hasOpinionCounts ? <OpinionCounts counts={place.goodTagCounts ?? {}} /> : place.sceneTags.length > 0 ? <p className="home-place-card__scenes">适合：{place.sceneTags.map((slug) => sceneTagLabels[slug] ?? slug).join(" · ")}</p> : null}
         {shownDishes.length > 0 ? <div className="home-place-card__recommend"><b>推荐菜</b><span>{shownDishes.join("、")}{remainingDishCount > 0 ? `，等 ${remainingDishCount} 道` : ""}</span></div> : place.review ? <p className="home-place-card__review">{place.review}</p> : null}
       </Link>

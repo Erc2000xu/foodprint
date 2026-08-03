@@ -3,9 +3,9 @@ import { PwaRegister } from "@/components/pwa/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "食迹 Foodprint",
+  title: "食迹",
   description: "由朋友共同维护的真实餐饮体验地图",
-  applicationName: "食迹 Foodprint",
+  applicationName: "食迹",
   appleWebApp: { capable: true, title: "食迹", statusBarStyle: "default" },
   icons: { apple: [{ url: "/mascot/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] },
 };

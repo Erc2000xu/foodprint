@@ -23,7 +23,7 @@ vi.mock("@/components/map/map-adapter", () => ({
   StaticMapAdapter: () => <div>地图</div>,
 }));
 
-describe("V1.3.1 controlled discovery filter menus", () => {
+describe("V1.4 controlled discovery filter menus", () => {
   beforeEach(() => {
     replace.mockClear();
     refresh.mockClear();
@@ -34,11 +34,11 @@ describe("V1.3.1 controlled discovery filter menus", () => {
     render(<DiscoveryBrowser places={[]} cuisineOptions={[["cantonese", "粤菜"]]} />);
 
     await user.click(screen.getByRole("button", { name: "按地点找" }));
-    expect(await screen.findByText("行政区 · 来自高德")).toBeInTheDocument();
+    expect(await screen.findByText("行政区")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "按地点找" })).toHaveAttribute("aria-expanded", "true");
 
     await user.click(screen.getByRole("button", { name: "按菜系找" }));
-    expect(screen.queryByText("行政区 · 来自高德")).not.toBeInTheDocument();
+    expect(screen.queryByText("行政区")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "粤菜" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "找灵感" }));

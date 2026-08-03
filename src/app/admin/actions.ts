@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { encryptInvitationToken } from "@/lib/invitations/token-crypto";
 import { createClient } from "@/lib/supabase/server";
+import { userFacingError } from "@/lib/user-facing-error";
 
 export type InviteResult = { error?: string; inviteUrl?: string };
 export type ManagementResult = { error?: string; success?: string };
@@ -16,7 +17,7 @@ export async function archiveGroupPlace(_: PlaceManagementResult, formData: Form
   if (!groupPlaceId.success || !reason.success || !understood) return { error: "请填写下架原因，并确认这是对整个小组地点的操作。" };
   const supabase = await createClient();
   const { error } = await supabase.rpc("archive_group_place", { p_group_place_id: groupPlaceId.data, p_reason: reason.data });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/"); revalidatePath("/admin"); revalidatePath(`/place/${groupPlaceId.data}`); revalidatePath("/activity");
   return { success: "地点已下架；历史内容已保留，可在地点与内容管理中恢复。" };
 }
@@ -26,9 +27,9 @@ export async function restoreGroupPlace(_: PlaceManagementResult, formData: Form
   if (!groupPlaceId.success) return { error: "地点信息无效。" };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("restore_group_place", { p_group_place_id: groupPlaceId.data });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/"); revalidatePath("/admin"); revalidatePath(`/place/${groupPlaceId.data}`); revalidatePath("/activity");
-  return { success: data?.[0]?.current_status === "inactive_no_marks" ? "地点已恢复为待真实推荐状态。" : "地点已恢复到发现和地图。" };
+  return { success: data?.[0]?.current_status === "inactive_no_marks" ? "地点已恢复，等待朋友留下推荐。" : "地点已恢复到发现和地图。" };
 }
 
 export async function restoreHiddenContent(_: PlaceManagementResult, formData: FormData): Promise<PlaceManagementResult> {
@@ -36,7 +37,7 @@ export async function restoreHiddenContent(_: PlaceManagementResult, formData: F
   if (!id.success || !type.success) return { error: "内容信息无效。" };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc(type.data === "visit" ? "restore_group_visit_record" : "restore_group_photo", { [type.data === "visit" ? "p_visit_record_id" : "p_photo_id"]: id.data });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/"); revalidatePath("/admin"); revalidatePath("/activity"); if (data) revalidatePath(`/place/${data}`);
   return { success: "内容已恢复显示。" };
 }
@@ -45,7 +46,7 @@ export async function restorePlaceCandidate(_: PlaceManagementResult, formData: 
   const id = z.string().uuid().safeParse(formData.get("candidate_id"));
   if (!id.success) return { error: "候选地点信息无效。" };
   const supabase = await createClient(); const { error } = await supabase.rpc("restore_place_candidate", { p_candidate_id: id.data });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/try"); revalidatePath("/admin");
   return { success: "候选已恢复到去试试。" };
 }
@@ -55,10 +56,10 @@ export async function leaveActiveGroup(_: ManagementResult, formData: FormData):
   if (!groupId.success) return { error: "共同地图信息无效，请刷新后重试。" };
   const supabase = await createClient();
   const { error } = await supabase.rpc("leave_active_group", { p_group_id: groupId.data });
-  if (error) return { error: error.message === "transfer ownership before leaving this group" ? "Owner 请先转让所有权后再退出。" : error.message };
+  if (error) return { error: error.message === "transfer ownership before leaving this group" ? "Owner 请先转让所有权后再退出。" : userFacingError(error) };
   revalidatePath("/");
   revalidatePath("/admin");
-  return { success: "你已退出共同地图；此前留下的地点、笔记、照片和体验会保留，并显示为「已离开成员」。" };
+  return { success: "你已退出共同地图。你留下的地点、笔记、照片和体验会保留，并显示为“已离开成员”。" };
 }
 
 export async function createInvitation(_: InviteResult, formData: FormData): Promise<InviteResult> {
@@ -75,7 +76,7 @@ export async function createInvitation(_: InviteResult, formData: FormData): Pro
   try {
     tokenCiphertext = encryptInvitationToken(token);
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "邀请链接加密配置无效。" };
+    return { error: userFacingError(error, "邀请链接加密配置无效。") };
   }
   const { data, error } = await supabase.rpc("create_managed_invitation", {
     p_group_id: groupId.data,
@@ -84,7 +85,7 @@ export async function createInvitation(_: InviteResult, formData: FormData): Pro
     p_token_hash: createHash("sha256").update(token).digest("hex"),
     p_token_ciphertext: tokenCiphertext,
   });
-  if (error || !data?.[0]?.id) return { error: error?.message ?? "创建邀请失败。" };
+  if (error || !data?.[0]?.id) return { error: error ? userFacingError(error, "创建邀请失败。") : "创建邀请失败。" };
   revalidatePath("/admin");
   return { inviteUrl: `${appUrl}/join/${token}` };
 }
@@ -95,7 +96,7 @@ export async function revokeInvitation(_: ManagementResult, formData: FormData):
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("revoke_invitation", { p_invitation_id: invitationId.data });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/admin");
   return { success: "邀请链接已撤销。" };
 }
@@ -112,9 +113,9 @@ export async function updateMemberStatus(_: ManagementResult, formData: FormData
     p_user_id: userId.data,
     p_status: status.data,
   });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/admin");
-  return { success: status.data === "suspended" ? "成员已暂停。" : "成员已恢复。" };
+  return { success: status.data === "suspended" ? "成员已暂停使用。" : "成员已恢复使用。" };
 }
 
 export async function setMemberRole(_: ManagementResult, formData: FormData): Promise<ManagementResult> {
@@ -128,7 +129,7 @@ export async function setMemberRole(_: ManagementResult, formData: FormData): Pr
     p_user_id: userId.data,
     p_role: role.data,
   });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/admin");
   return { success: role.data === "admin" ? "已设为 Admin。" : "已设为普通成员。" };
 }
@@ -139,13 +140,13 @@ export async function completePlaceCuisine(_: ManagementResult, formData: FormDa
   if (!groupPlaceId.success || !cuisineSlug.success) return { error: "地点或菜系信息无效。" };
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "请先登录。" };
+  if (!user) return { error: "请先登录后再继续。" };
   const { data: groupPlace } = await supabase.from("group_places").select("group_id").eq("id", groupPlaceId.data).maybeSingle();
   if (!groupPlace) return { error: "地点不存在或无权访问。" };
   const { data: membership } = await supabase.from("group_members").select("role").eq("group_id", groupPlace.group_id).eq("user_id", user.id).eq("status", "active").maybeSingle();
   if (!membership || !["owner", "admin"].includes(membership.role)) return { error: "只有 Owner 或 Admin 可以完善历史地点。" };
   const { error } = await supabase.rpc("set_group_place_cuisines", { p_group_place_id: groupPlaceId.data, p_cuisine_slugs: [cuisineSlug.data] });
-  if (error) return { error: error.message };
+  if (error) return { error: userFacingError(error) };
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath("/");

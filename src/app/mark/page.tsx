@@ -9,6 +9,8 @@ export default async function MarkPage({ searchParams }: { searchParams: Promise
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/mark");
+  const { data: activeMembership } = await supabase.from("group_members").select("group_id").eq("user_id", user.id).eq("status", "active").limit(1).maybeSingle();
+  const { data: activeGroup } = activeMembership ? await supabase.from("groups").select("name").eq("id", activeMembership.group_id).maybeSingle() : { data: null };
   const { place: groupPlaceId, candidate: candidateId } = await searchParams;
   let mealForm: ReactNode;
   if (groupPlaceId) {
@@ -31,5 +33,5 @@ export default async function MarkPage({ searchParams }: { searchParams: Promise
       }
     }
   }
-  return <AppShell activeNav="记一顿"><main className="mark-page">{mealForm ?? <MarkFlow />}</main></AppShell>;
+  return <AppShell activeNav="记一顿" groupName={activeGroup?.name}><main className="mark-page">{mealForm ?? <MarkFlow />}</main></AppShell>;
 }

@@ -53,7 +53,7 @@ export function PhotoPicker({ onProcessingChange }: { onProcessingChange?: (proc
     setError(""); setProcessing(true);
     try {
       const incoming = Array.from(files).slice(0, 9 - filesRef.current.length);
-      if (incoming.length < files.length) setError("每条真实标记最多上传 9 张照片。");
+      if (incoming.length < files.length) setError("每条记录最多上传 9 张照片。");
       if (incoming.some((file) => !file.type.startsWith("image/"))) throw new Error("只能选择图片文件。");
       const compressed = await Promise.all(incoming.map(compressPhoto));
       const next = [...filesRef.current, ...compressed.map((item) => item.file)]; filesRef.current = next; syncInput(next);
@@ -61,7 +61,10 @@ export function PhotoPicker({ onProcessingChange }: { onProcessingChange?: (proc
         const url = URL.createObjectURL(file); urlsRef.current.push(url);
         return { id: crypto.randomUUID(), url, name: file.name, width, height };
       })]);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "图片处理失败，请重试。"); }
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "";
+      setError(message.includes("压缩后的图片仍超过") ? "压缩后的图片仍超过 1.5MB，请换一张照片后重试。" : message.includes("只能选择图片") ? "只能选择图片文件。" : "图片处理失败，请换一张照片后重试。");
+    }
     finally { setProcessing(false); }
   };
   const remove = (id: string) => setPreviews((current) => {
@@ -70,5 +73,5 @@ export function PhotoPicker({ onProcessingChange }: { onProcessingChange?: (proc
     return current.filter((preview) => preview.id !== id);
   });
 
-  return <section className="photo-picker"><div><strong>照片 <span className="optional-mark">可选，最多 9 张</span></strong><p>首页按 3:4（宽:高）竖图展示，建议优先上传竖版照片；横图会居中裁切。</p><p>上传前会压缩为 WebP，并移除拍摄信息。</p></div><input ref={inputRef} className="photo-picker__input" name="photos" type="file" accept="image/*" multiple onChange={(event) => void choosePhotos(event.target.files)} />{previews.map((preview) => <input key={`meta-${preview.id}`} type="hidden" name="photo_dimensions" value={`${preview.width}x${preview.height}`} />)}{processing && <p className="photo-picker__state">正在压缩图片…</p>}{error && <p className="form-error">{error}</p>}{previews.length > 0 && <div className="photo-picker__grid">{previews.map((preview) => <figure key={preview.id}><img src={preview.url} alt="待上传照片预览" /><button type="button" onClick={() => remove(preview.id)} aria-label={`移除 ${preview.name}`}>×</button></figure>)}</div>}</section>;
+  return <section className="photo-picker"><div><strong>照片 <span className="optional-mark">可选，最多 9 张</span></strong><p>首页按 3:4（宽:高）竖图展示，建议优先上传竖版照片；横图会居中裁切。</p><p>上传前会压缩图片，并移除拍摄信息。</p></div><input ref={inputRef} className="photo-picker__input" name="photos" type="file" accept="image/*" multiple onChange={(event) => void choosePhotos(event.target.files)} />{previews.map((preview) => <input key={`meta-${preview.id}`} type="hidden" name="photo_dimensions" value={`${preview.width}x${preview.height}`} />)}{processing && <p className="photo-picker__state">图片处理中…</p>}{error && <p className="form-error">{error}</p>}{previews.length > 0 && <div className="photo-picker__grid">{previews.map((preview) => <figure key={preview.id}><img src={preview.url} alt="待上传照片预览" /><button type="button" onClick={() => remove(preview.id)} aria-label={`移除 ${preview.name}`}>×</button></figure>)}</div>}</section>;
 }
