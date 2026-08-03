@@ -119,7 +119,7 @@ GitHub Repository Actions secrets 使用以下固定名称：
 
 项目负责人只在浏览器完成账户与密钥操作；Codex 负责生成、核对和验证，但不索取任何 secret：
 
-1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。确认每一条 repair 后才登记，不重放 SQL。
+1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。若本地有、远端 history 没有的旧版本，先运行 Verify legacy migration state；它只导出 public schema 到临时 runner 并核对旧迁移留下的对象，绝不写入数据、schema 或 history。只有两项审计都通过后，才可逐条批准 repair 为 applied，不重放 SQL。
 2. 在 GitHub Repository Actions secrets 添加四个固定名称的生产凭据；不要发送给 Codex。
 3. 在 Vercel 创建一个指向 main 的 Production Deploy Hook，并核对 Production 环境变量。
 4. 在 Supabase 配置 production Edge Function secrets 与 Origin 白名单。

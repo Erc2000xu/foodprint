@@ -1,0 +1,42 @@
+name: Verify legacy migration state
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: foodprint-production-legacy-migration-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Verify repository secrets
+        shell: bash
+        run: |
+          failed=0
+          for setting in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID; do
+            if [ -z "${!setting}" ]; then
+              echo "::error::Missing repository Actions secret: ${setting}"
+              failed=1
+            fi
+          done
+          exit "$failed"
+      - name: Link the production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+      - name: Dump the production public schema (read-only)
+        run: supabase db dump --linked --schema public --file "$RUNNER_TEMP/foodprint-production-public-schema.sql"
+      - name: Verify legacy migration requirements
+        run: node scripts/verify-legacy-migration-state.mjs "$RUNNER_TEMP/foodprint-production-public-schema.sql"
