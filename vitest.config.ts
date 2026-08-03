@@ -9,5 +9,12 @@ export default defineConfig({
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     pool: "threads",
     maxWorkers: 1,
+    // Zod's conditional ESM package must be transformed by Vite in this runtime.
+    // Native externalization causes Vitest workers to stall before test execution.
+    server: {
+      deps: {
+        inline: ["zod"],
+      },
+    },
   },
 });
