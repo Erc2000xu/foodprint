@@ -14,7 +14,7 @@ export function MemberStatusButton({ groupId, userId, status }: { groupId: strin
       <input type="hidden" name="user_id" value={userId} />
       <input type="hidden" name="status" value={isSuspending ? "suspended" : "active"} />
       <button className={isSuspending ? "text-button text-button--danger" : "text-button"} disabled={pending}>
-        {pending ? "正在保存…" : isSuspending ? "暂停" : "恢复"}
+        {pending ? "正在保存…" : isSuspending ? "暂停使用" : "恢复使用"}
       </button>
       {state.error && <span className="inline-action__error">{state.error}</span>}
       {state.success && <span className="inline-action__success">{state.success}</span>}

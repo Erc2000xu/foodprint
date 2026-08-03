@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { cuisineOptions } from "@/lib/discovery-options";
 import { createClient } from "@/lib/supabase/server";
+import { userFacingError } from "@/lib/user-facing-error";
 
 export type PoiLookup = { error?: string; found?: boolean };
 export type MarkResult = { error?: string; success?: string };
@@ -28,10 +29,10 @@ function validationMessage(issues: ReadonlyArray<{ path: readonly unknown[]; cod
 async function getActiveGroupId() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { supabase, error: "请先登录。" as const };
+  if (!user) return { supabase, error: "请先登录后再继续。" as const };
   const { data: memberships } = await supabase.from("group_members").select("group_id").eq("user_id", user.id).eq("status", "active").limit(1);
   const groupId = memberships?.[0]?.group_id;
-  return groupId ? { supabase, groupId, userId: user.id } : { supabase, error: "你尚未加入共同地图。" as const };
+  return groupId ? { supabase, groupId, userId: user.id } : { supabase, error: "你还没有加入共同地图。" as const };
 }
 
 export async function lookupAmapPoi(poiId: string): Promise<PoiLookup> {
@@ -72,11 +73,11 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     p_recommended_items: items, p_cuisine_slugs: [value.cuisine_slug], p_strength: value.strength,
     p_tags: value.opinion_tags, p_is_anonymous: value.anonymous === "on",
   });
-  if (error || !data?.[0]?.mark_id) return { error: error?.message ?? "保存标记失败。" };
+  if (error || !data?.[0]?.mark_id) return { error: error ? userFacingError(error) : "操作没有完成，请再试一次。" };
   const visitRecordId = data[0].visit_record_id as string;
   if (photos.length) {
     const { count, error: countError } = await activeGroup.supabase.from("photos").select("id", { count: "exact", head: true }).eq("visit_record_id", visitRecordId).is("deleted_at", null);
-    if (countError) return { error: `真实标记已保存，但无法读取已有照片：${countError.message}` };
+    if (countError) return { error: "这一顿已记下，但照片数量暂时无法确认；请稍后再试。" };
     if ((count ?? 0) + photos.length > 9) return { error: `这顿饭已保存；该条记录已有 ${count ?? 0} 张照片，最多保留 9 张。` };
   }
   for (const [sortOrder, photo] of photos.entries()) {
@@ -85,18 +86,18 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     const height = dimensions ? Number(dimensions[2]) : null;
     const objectKey = `groups/${activeGroup.groupId}/users/${activeGroup.userId}/visits/${visitRecordId}/${crypto.randomUUID()}.webp`;
     const { error: uploadError } = await activeGroup.supabase.storage.from("place-photos").upload(objectKey, photo, { contentType: "image/webp", upsert: false });
-    if (uploadError) return { error: `真实标记已保存，但第 ${sortOrder + 1} 张照片上传失败：${uploadError.message}` };
+    if (uploadError) return { error: `这一顿已记下，但第 ${sortOrder + 1} 张照片上传失败；请稍后再试。` };
     const { error: photoError } = await activeGroup.supabase.from("photos").insert({
       group_id: activeGroup.groupId, group_place_id: data[0].group_place_id, user_id: activeGroup.userId,
       visit_record_id: visitRecordId, storage_provider: "supabase", object_key: objectKey, width, height, size_bytes: photo.size, sort_order: sortOrder,
     });
     if (photoError) {
       await activeGroup.supabase.storage.from("place-photos").remove([objectKey]);
-      return { error: `真实标记已保存，但第 ${sortOrder + 1} 张照片登记失败：${photoError.message}` };
+      return { error: `这一顿已记下，但第 ${sortOrder + 1} 张照片登记失败；请稍后再试。` };
     }
   }
   const { error: discoveryError } = await activeGroup.supabase.rpc("refresh_group_place_discovery_metadata", { p_group_place_id: data[0].group_place_id });
-  if (discoveryError) return { error: `真实标记已保存，但检索信息待后台补充：${discoveryError.message}` };
+  if (discoveryError) return { error: "这一顿已记下，但地点信息正在整理，请稍后再查看。" };
   // Best-effort, provider-owned display cache. A failed lookup must never roll
   // back a valid meal record; the throttled discovery backfill will retry it.
   await activeGroup.supabase.functions.invoke("amap-poi-search", {
@@ -105,7 +106,7 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
   revalidatePath("/");
   revalidatePath("/try");
   revalidatePath(`/place/${data[0].group_place_id}`);
-    return { success: "第一顿已记下，地点已加入共同地图。" };
+    return { success: "这一顿已记下，地点已加入共同地图。" };
   } catch (error) {
     console.error("savePlaceMark failed", error);
     return { error: "保存失败，请检查网络后重试。" };
@@ -142,7 +143,7 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
     p_dishes: (value.dishes ?? "").split(/[,，]/).map((dish) => dish.trim()).filter(Boolean).slice(0, 12),
     p_is_anonymous: value.anonymous === "on",
   });
-  if (error || !data?.[0]?.visit_record_id) return { error: error?.message ?? "这顿饭暂时没有保存成功。" };
+  if (error || !data?.[0]?.visit_record_id) return { error: error ? userFacingError(error) : "操作没有完成，请再试一次。" };
   const visitRecordId = data[0].visit_record_id as string;
   if (photos.length) {
     const [{ data: groupPlace }, { data: { user } }] = await Promise.all([
@@ -154,7 +155,7 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
       const dimensions = photoDimensions[sortOrder];
       const objectKey = `groups/${groupPlace.group_id}/users/${user.id}/visits/${visitRecordId}/${crypto.randomUUID()}.webp`;
       const { error: uploadError } = await supabase.storage.from("place-photos").upload(objectKey, photo, { contentType: "image/webp", upsert: false });
-      if (uploadError) return { success: "这顿饭已记下，地点时间线也更新了。", warning: `第 ${sortOrder + 1} 张照片未上传：${uploadError.message}` };
+      if (uploadError) return { success: "这顿饭已记下，地点时间线也更新了。", warning: `第 ${sortOrder + 1} 张照片未上传，请稍后再试。` };
       const { error: photoError } = await supabase.from("photos").insert({
         group_id: groupPlace.group_id,
         group_place_id: value.group_place_id,
@@ -169,7 +170,7 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
       });
       if (photoError) {
         await supabase.storage.from("place-photos").remove([objectKey]);
-        return { success: "这顿饭已记下，地点时间线也更新了。", warning: `第 ${sortOrder + 1} 张照片未登记：${photoError.message}` };
+        return { success: "这顿饭已记下，地点时间线也更新了。", warning: `第 ${sortOrder + 1} 张照片未登记，请稍后再试。` };
       }
     }
   }

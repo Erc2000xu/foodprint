@@ -17,14 +17,14 @@ export function OpinionPicker({ namePrefix, defaultStrength, defaultTags = [] }:
   const toggle = (slug: GoodAtSlug) => setSelected((current) => current.includes(slug) ? current.filter((item) => item !== slug) : current.length < maxGoodAtTags ? [...current, slug] : current);
   return <>
     <fieldset className="meal-strength opinion-picker__strength">
-      <legend>这次的推荐强度 <span className="required-dot" aria-label="必填">·</span></legend>
+      <legend>这次有多愿意推荐？（必填）</legend>
       <div className="strength-choice-list">{strengths.map((strength) => <label className="strength-choice" key={strength.value}>
         <input defaultChecked={defaultStrength === strength.value} name="strength" required type="radio" value={strength.value} />
         <span className="strength-choice__content"><BowlIcon level={toBowlLevel(strength.value)} size="sm" /><span><b>{strength.label}</b><small>{strength.description}</small></span><em aria-hidden="true">✓</em></span>
       </label>)}</div>
     </fieldset>
     <fieldset className="scene-tag-picker opinion-picker__tags">
-      <legend>好在哪儿 <span className="required-dot" aria-label="必填">·</span><small>已选 {selected.length}/{maxGoodAtTags}</small></legend>
+      <legend>好在哪儿（选 1–2 项）<small>已选 {selected.length}/{maxGoodAtTags}</small></legend>
       {selected.map((slug) => <input key={`selected-${slug}`} name={namePrefix} type="hidden" value={slug} />)}
       <div className="good-at-picker">{goodAtOptions.map((option) => {
         const checked = selected.includes(option.slug); const disabled = !checked && selected.length >= maxGoodAtTags;

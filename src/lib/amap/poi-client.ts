@@ -8,8 +8,14 @@ type AmapPayload = { candidates?: AmapPoiCandidate[]; districts?: AmapDistrict[]
 async function invokeAmapPoi(body: Record<string, unknown>): Promise<AmapPayload> {
   const supabase = createClient();
   const { data, error } = await supabase.functions.invoke("amap-poi-search", { body });
-  if (!error) return (data ?? {}) as AmapPayload;
-  if (error.context instanceof Response) return await error.context.json().catch(() => ({ error: amapFailureMessage("network_failure") })) as AmapPayload;
+  if (!error) {
+    const payload = (data ?? {}) as AmapPayload;
+    return payload.error ? { ...payload, error: amapFailureMessage(payload.category) } : payload;
+  }
+  if (error.context instanceof Response) {
+    const payload = await error.context.json().catch(() => ({})) as AmapPayload;
+    return { ...payload, error: amapFailureMessage(payload.category, amapFailureMessage("network_failure")) };
+  }
   return { error: amapFailureMessage("network_failure"), category: "network_failure" };
 }
 

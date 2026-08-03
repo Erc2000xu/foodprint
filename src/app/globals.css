@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Source Han Sans SC Local";
+  src: url("/fonts/source-han-sans-sc-v2.005.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ZCOOL XiaoWei Local";
+  src: url("/fonts/zcool-xiaowei-v15-subset.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 :root {
   --color-bg: #f7f3e9;
   --color-surface: #fffdf8;
@@ -18,7 +34,9 @@
   --radius-card: 20px;
   --radius-control: 14px;
   --shadow-card: 0 12px 32px rgb(35 68 61 / 12%);
-  --font-sans: ui-rounded, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-ui: "Source Han Sans SC Local", "Source Han Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "ZCOOL XiaoWei Local", "ZCOOL XiaoWei", "STKaiti", "KaiTi", serif;
+  --font-sans: var(--font-ui);
   --phone-air-width: 420px;
   --phone-air-frame: calc(var(--phone-air-width) + 10px);
 }
@@ -33,12 +51,14 @@ body {
   min-height: 100dvh;
   color: var(--color-text);
   background: var(--color-bg);
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
 }
 
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button:focus-visible, a:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 3px; }
+
+.creative-title { font-family: var(--font-display); font-weight: 400; letter-spacing: -.02em; }
 
 .app-shell {
   min-height: 100dvh;

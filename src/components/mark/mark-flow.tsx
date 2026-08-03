@@ -99,18 +99,18 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
 
   const requestLocationSort = () => {
     if (!navigator.geolocation) {
-      setLocationState("当前浏览器不支持定位，仍按高德默认顺序展示。");
+      setLocationState("无法使用定位，已按默认顺序显示。");
       return;
     }
-    setLocationState("正在获取当前位置…");
+    setLocationState("正在获取位置…");
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         const location = { latitude: coords.latitude, longitude: coords.longitude };
         setUserLocation(location);
         setResults((current) => sortByDistance(current, location));
-        setLocationState("已按距你当前位置由近到远排序。");
+        setLocationState("已按距离从近到远排序。");
       },
-      () => setLocationState("未取得定位权限，仍按高德默认顺序展示。"),
+      () => setLocationState("未获得定位权限，已按默认顺序显示。"),
       { enableHighAccuracy: false, timeout: 10_000, maximumAge: 5 * 60_000 },
     );
   };
@@ -129,11 +129,11 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
     });
   };
 
-  if (state.success) return <section className="mark-card mark-success-card"><Image className="mark-success-mascot" src="/mascot/mark-success.jpg" width={220} height={220} alt="食迹腊肠狗把地点标记在地图上" priority /><p className="eyebrow">标记完成</p><h1>已留下一次真实体验</h1><p className="form-success">{state.success}</p><Link className="primary-link" href="/">回到发现</Link></section>;
+  if (state.success) return <section className="mark-card mark-success-card"><Image className="mark-success-mascot" src="/mascot/mark-success.jpg" width={220} height={220} alt="食迹腊肠狗把地点记录在地图上" priority /><p className="eyebrow">这一顿已记下</p><h1>已留下这次真实体验</h1><p className="form-success">{state.success}</p><Link className="primary-link" href="/">回到发现</Link></section>;
 
   if (selected) return <section className="mark-card">
     <button className="back-button" type="button" onClick={() => { setSelected(undefined); setKeyword(""); }}>← 重新搜索</button>
-    <p className="eyebrow">{alreadyInGroup ? "朋友已经标记过这里" : initialCandidate ? "完成这次真实体验" : "添加新地点"}</p>
+    <p className="eyebrow">{alreadyInGroup ? "已有朋友记录" : "收录新地点"}</p>
     <h1>{selected.name}</h1>
     <p className="selected-place">{selected.address || `${selected.city} ${selected.district}`}</p>
     <form className="mark-form" action={action} onSubmit={(event) => { if (photosProcessing) event.preventDefault(); }}>
@@ -146,33 +146,33 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       <input type="hidden" name="longitude" value={selected.longitude} />
       <input type="hidden" name="branch_name" value="" />
       <p className="required-help">带 · 的项目需要填写</p>
-      {!alreadyInGroup && <label className="attestation attestation--first"><input name="attested" type="checkbox" required /> <span><b>这是我亲自去过、也愿意推荐给朋友的地方</b><small>首次收录只接受真实、正向的推荐。</small></span></label>}
+      {!alreadyInGroup && <label className="attestation attestation--first"><input name="attested" type="checkbox" required /> <span><b>我确认：这是我亲自去过的地方，以下内容来自真实感受。</b><small>第一次收录的地点，需要是你愿意推荐给朋友的地方。</small></span></label>}
       {alreadyInGroup && <input name="attested" type="hidden" value="on" />}
-      <label>到访日期 <span className="required-dot" aria-label="必填">·</span><input name="visited_on" type="date" max={new Date().toISOString().slice(0, 10)} required /></label>
-      <label>地点类型 <span className="required-dot" aria-label="必填">·</span><select name="primary_category" value={primaryCategory} onChange={(event) => setPrimaryCategory(event.target.value as PlaceCategory)}>{categoryOptions.map(([value, categoryLabel]) => <option key={value} value={value}>{categoryLabel}</option>)}</select></label>
-      <label>主菜系 <span className="required-dot" aria-label="必填">·</span><select name="cuisine_slug" value={cuisine} onChange={(event) => setCuisine(event.target.value as typeof cuisine)}>{cuisineOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <section className="mark-form-section"><h2>说说为什么推荐</h2><OpinionPicker namePrefix="opinion_tags" /></section>
-      <label>推荐菜 / 饮品 <span className="optional-mark">可选</span><input name="dishes" maxLength={400} placeholder="用逗号分隔，例如：手冲咖啡，巴斯克" /></label>
-      <label>饭后感受 <span className="optional-mark">可选</span><textarea name="note" maxLength={1000} placeholder="想留下的真实感受" /></label>
+      <label>到访日期（必填）<input name="visited_on" type="date" max={new Date().toISOString().slice(0, 10)} required /></label>
+      <label>地点类型<select name="primary_category" value={primaryCategory} onChange={(event) => setPrimaryCategory(event.target.value as PlaceCategory)}>{categoryOptions.map(([value, categoryLabel]) => <option key={value} value={value}>{categoryLabel}</option>)}</select></label>
+      <label>主菜系（必填）<select name="cuisine_slug" value={cuisine} onChange={(event) => setCuisine(event.target.value as typeof cuisine)}>{cuisineOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <section className="mark-form-section"><OpinionPicker namePrefix="opinion_tags" /></section>
+      <label>推荐菜或饮品（可选）<input name="dishes" maxLength={400} placeholder="用逗号隔开，例如：手冲咖啡，巴斯克" /></label>
+      <label>饭后感受（可选）<textarea name="note" maxLength={1000} placeholder="留下这次真实感受" /></label>
       <PhotoPicker onProcessingChange={setPhotosProcessing} />
       <label className="attestation"><input name="anonymous" type="checkbox" /> <span>匿名分享给小组<br /><small>大家会看到“匿名成员”；你自己仍可管理和导出这条记录。</small></span></label>
       {state.error && <p className="form-error">{state.error}</p>}
-      <p className="form-completion-note">完成真实推荐确认、到访日期、地点类型、主菜系、推荐强度和好在哪儿后即可保存。</p>
-      <button className="primary-button" disabled={pending || photosProcessing}>{pending ? "正在保存…" : photosProcessing ? "正在处理照片…" : "记下这顿饭"}</button>
+      <p className="form-completion-note">完成到访确认、到访日期、地点类型、主菜系、推荐强度和好在哪儿后即可保存。</p>
+      <button className="primary-button" disabled={pending || photosProcessing}>{pending ? "正在保存…" : photosProcessing ? "正在处理照片…" : "保存这次体验"}</button>
     </form>
   </section>;
 
   return <section className="mark-card">
-    <p className="eyebrow">添加真实体验</p>
-    <h1>你去过的地方，才值得留在这里。</h1>
-    <p>搜索高德地点；新地点必须与第一条真实推荐一起加入共同地图。</p>
-    <label className="poi-search">搜索地点<input value={keyword} onChange={(event) => { setKeyword(event.target.value); setResults([]); setSearching(false); setSearchError(""); setHasSearched(false); }} autoFocus placeholder="输入餐厅、咖啡馆或酒吧名称" /></label>
-    <div className="location-sort"><button type="button" className="text-button" onClick={requestLocationSort}>{userLocation ? "已按当前位置排序" : "按当前位置排序"}</button>{locationState && <span>{locationState}</span>}</div>
+    <p className="eyebrow">记下第一顿</p>
+    <h1 className="creative-title">把这一顿，好好记下来。</h1>
+    <p>搜索你去过的地方。第一次收录时，请补充真实感受和推荐理由。</p>
+    <label className="poi-search">搜索去过的地方<input value={keyword} onChange={(event) => { setKeyword(event.target.value); setResults([]); setSearching(false); setSearchError(""); setHasSearched(false); }} autoFocus placeholder="输入店名、咖啡馆或酒吧名称" /></label>
+    <div className="location-sort"><button type="button" className="text-button" onClick={requestLocationSort}>{userLocation ? "已按距离排序" : "按距离排序"}</button>{locationState && <span>{locationState}</span>}</div>
     {searching && <p className="search-state">正在搜索…</p>}
     {searchError && <p className="form-error">{searchError}</p>}
     {selectionError && <p className="form-error">{selectionError}</p>}
-    {isLookingUp && <p className="search-state">正在检查共同地图…</p>}
+    {isLookingUp && <p className="search-state">正在查看共同地图…</p>}
     <ul className="poi-results">{results.map((candidate) => <li key={candidate.poiId}><button type="button" onClick={() => choose(candidate)} disabled={isLookingUp}><strong>{candidate.name}</strong><span>{candidate.address || `${candidate.city} ${candidate.district}`}</span><div className="poi-result-tags">{candidate.city && <em className={`city-tag ${cityTagTone(candidate.city)}`}>{candidate.city}</em>}{candidate.distanceMeters !== undefined && Number.isFinite(candidate.distanceMeters) && <em className="distance-tag">{formatDistance(candidate.distanceMeters)}</em>}</div></button></li>)}</ul>
-    {hasSearched && !searchError && !searching && !results.length && <p className="search-state">没有找到结果。请换一个关键词，或稍后重试。</p>}
+    {hasSearched && !searchError && !searching && !results.length && <p className="search-state">没找到这家。换个关键词，或稍后再试。</p>}
   </section>;
 }

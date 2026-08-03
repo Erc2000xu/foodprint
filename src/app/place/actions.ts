@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { userFacingError } from "@/lib/user-facing-error";
 
 export type PhotoDeleteResult = { error?: string };
 export type VisitDeleteResult = { error?: string; success?: string };
@@ -14,7 +15,7 @@ export async function deleteMyPhoto(_: PhotoDeleteResult, formData: FormData): P
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "请先登录。" };
+  if (!user) return { error: "请先登录后再继续。" };
 
   const { data: photo, error: photoError } = await supabase
     .from("photos")
@@ -26,9 +27,9 @@ export async function deleteMyPhoto(_: PhotoDeleteResult, formData: FormData): P
   if (photoError || !photo) return { error: "找不到这张照片，或你没有删除权限。" };
 
   const { error: storageError } = await supabase.storage.from("place-photos").remove([photo.object_key]);
-  if (storageError) return { error: `照片文件删除失败：${storageError.message}` };
+  if (storageError) return { error: "照片文件删除失败，请稍后再试。" };
   const { error: updateError } = await supabase.from("photos").update({ deleted_at: new Date().toISOString() }).eq("id", photo.id);
-  if (updateError) return { error: `照片记录删除失败：${updateError.message}` };
+  if (updateError) return { error: "照片记录删除失败，请稍后再试。" };
 
   revalidatePath(`/place/${photo.group_place_id}`);
   return {};
@@ -40,15 +41,15 @@ export async function deleteMyVisit(_: VisitDeleteResult, formData: FormData): P
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("delete_my_visit_record", { p_visit_record_id: visitRecordId.data });
   const result = data?.[0];
-  if (error || !result?.group_place_id) return { error: error?.message ?? "无法删除这条到访记录。" };
+  if (error || !result?.group_place_id) return { error: error ? userFacingError(error) : "无法删除这条到访记录。" };
   if (result.object_keys?.length) {
     const { error: storageError } = await supabase.storage.from("place-photos").remove(result.object_keys);
-    if (storageError) return { error: `记录已隐藏，但照片文件尚未清理：${storageError.message}` };
+    if (storageError) return { error: "记录已隐藏，但照片文件尚未清理；请稍后再试。" };
   }
   revalidatePath("/");
   revalidatePath("/activity");
   revalidatePath(`/place/${result.group_place_id}`);
-  return { success: "这条到访记录已删除。" };
+  return { success: "这次到访记录已删除。" };
 }
 
 export async function hideGroupContent(_: ModerationResult, formData: FormData): Promise<ModerationResult> {
@@ -61,9 +62,9 @@ export async function hideGroupContent(_: ModerationResult, formData: FormData):
     [contentType.data === "visit" ? "p_visit_record_id" : "p_photo_id"]: contentId.data,
     p_reason: reason.data,
   });
-  if (error || !data) return { error: error?.message ?? "无法隐藏这项内容。" };
+  if (error || !data) return { error: error ? userFacingError(error) : "无法隐藏这项内容。" };
   revalidatePath("/");
   revalidatePath("/activity");
   revalidatePath(`/place/${data}`);
-  return { success: "内容已从普通小组视图隐藏。" };
+  return { success: "已从小组视图隐藏这项内容。" };
 }

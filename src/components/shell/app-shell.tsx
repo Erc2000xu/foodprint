@@ -10,17 +10,18 @@ const navigation = [
   { label: "我的", icon: "/nav-icons/profile.png", href: "/admin" },
 ];
 
-export function AppShell({ children, activeNav = "发现" }: { children: ReactNode; activeNav?: string }) {
+export function AppShell({ children, activeNav = "发现", groupName }: { children: ReactNode; activeNav?: string; groupName?: string | null }) {
+  const displayedGroupName = groupName?.trim() || "共同地图";
   return (
     <div className="app-shell">
       <header className="app-header">
-        <Link className="brand" href="/" aria-label="食迹 Foodprint 首页">
+        <Link className="brand" href="/" aria-label="食迹首页">
           <Image className="brand__badge" src="/mascot/icon-192.png" width={34} height={34} alt="" priority />
           <span className="brand__name">食迹</span>
         </Link>
-        <button className="group-status" type="button" aria-label="当前共同地图：食迹 Foodprint">
+        <button className="group-status" type="button" aria-label={`当前共同地图：${displayedGroupName}`}>
           <span className="status-dot" aria-hidden="true" />
-          食迹 Foodprint
+          {displayedGroupName}
         </button>
       </header>
       <main className="app-main">{children}</main>
