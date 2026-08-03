@@ -69,7 +69,7 @@ npm run build
 - `PoiSearchProvider`
 - `MapProvider`
 
-业务功能将在后续阶段依赖这些接口，不能直接在页面和组件中散落调用 Supabase、高德或存储服务。这样可在未来以腾讯云 COS、国内认证和其他地图适配器替换底层实现，而不重写业务组件。V1 的生产容器、迁移步骤及备案后腾讯云切流清单见 [docs/OPERATIONS.md](docs/OPERATIONS.md)。
+业务功能将在后续阶段依赖这些接口，不能直接在页面和组件中散落调用 Supabase、高德或存储服务。这样可在未来以腾讯云 COS、国内认证和其他地图适配器替换底层实现，而不重写业务组件。V1 的生产容器、迁移步骤及备案后腾讯云切流清单见 [docs/OPERATIONS.md](docs/OPERATIONS.md)；免费版 Supabase 的单生产发布顺序见 [docs/RELEASE_SOP.md](docs/RELEASE_SOP.md)。
 
 ## 高德免费版硬性约束
 
@@ -79,7 +79,7 @@ Foodprint 中长期只使用高德开放平台免费版在当前主体、用途�
 
 1. 在 Vercel 配置 Supabase 公共变量及高德 JS Key / JS 安全密钥；不要把高德 Web 服务 Key 放到 Vercel 或浏览器。
 2. 在 Supabase Edge Function Secrets 中配置 `AMAP_WEBSERVICE_KEY` 与 `APP_ALLOWED_ORIGINS`，然后同时部署 `amap-poi-search` 和 `amap-static-map`。`APP_ALLOWED_ORIGINS` 只填写精确的生产/本地地址；地点搜索与静态地图均经这些函数调用高德，避免公开 Web 服务 Key。
-3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。执行 `supabase db push` 后再提交对应 migration；Docker 的本地 migration-cache 警告不代表远程迁移失败。
+3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。先提交 migration 并通过 CI；项目负责人手动批准后，GitHub Actions 才依序应用到 production 并触发部署。不得在生产 SQL Editor 粘贴常规 migration，也不得从本机临时执行 `db push`。
 4. 首个 Owner 可由受控脚本初始化；邀请链接只由 Owner 生成。
 5. PWA 不需要额外密钥：生产环境会自动注册 `/service-worker.js`。图标、manifest、离线页和安装引导已经内置。
 6. Owner 的全量 JSON 导出需要 Vercel Production 中的 `SUPABASE_SERVICE_ROLE_KEY`；该 key 不会发送到浏览器。

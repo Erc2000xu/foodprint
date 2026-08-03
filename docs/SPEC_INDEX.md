@@ -1,6 +1,6 @@
 # 食迹 Foodprint｜规格与交付索引
 
-> 更新日期：2026-07-30
+> 更新日期：2026-08-03
 > 使用方式：开发从上至下推进。每一项由项目负责人明确批准后，才可将状态改为“开发中”并开始代码变更。
 
 ## 1. 总体交付链路
@@ -18,6 +18,8 @@ P0 是唯一立即阻塞项：V1.2 的地点检索入口依赖稳定高德服务
 | specs/2026-07-p0-amap-reliability-security.md | 已关闭（2026-07-28） | 高德来源配置治理、降级和运维 | 已完成 |
 | decisions/2026-07-02-amap-origin-service-boundary.md | 已记录 | 地图 Key、Origin 和代理边界 | P0 实施前复核 |
 | AMAP_OPERATIONS_RUNBOOK.md | 生效 | 地图故障、发布、配额和密钥操作 | 每次地图/域名发布 |
+| decisions/2026-08-03-free-tier-release-pipeline.md | 已确认，待外部配置完成后启用 | 免费版单生产、GitHub Actions、凭据与手动发布顺序 | 每次数据库、Edge Function 或部署改动 |
+| RELEASE_SOP.md | 已确认，待外部配置完成后启用 | 免费版日常开发、迁移、验收、发布与失败处理唯一流程 | 每次进入 GitHub 的正式迭代 |
 | specs/2026-07-v1-2-discovery-try-list.md | 待批准 | 发现、去试试、下回吃与候选流转 | P0 验收、生命周期工程设计 |
 | decisions/2026-07-01-place-lifecycle-recommendation-model.md | 已记录 | 地点状态、重复到访和汇总原则 | V1.2/V1.3 实施前复核 |
 | specs/2026-07-v1-3-record-a-meal.md | 待批准 | 记一顿、三级小碗、地点详情和饭后聊 | V1.2 稳定、迁移评审 |
@@ -42,7 +44,7 @@ P0 是唯一立即阻塞项：V1.2 的地点检索入口依赖稳定高德服务
 
 ## 4. 全版本工程检查
 
-每个版本提交前都需要：范围未扩大检查、迁移向前兼容检查、RLS/Storage 权限测试、第三方 Key/Origin 核对、类型/Lint/测试/构建、桌面与手机人工验收、错误降级验证、发布记录、回滚步骤和已知限制。
+每个版本提交前都需要：范围未扩大检查、迁移向前兼容检查、RLS/Storage 权限测试、第三方 Key/Origin 核对、类型/Lint/测试/构建、干净数据库 migration 重放、桌面与手机人工验收、错误降级验证、发布记录、回滚步骤和已知限制。数据库或部署改动还必须通过 RELEASE_SOP 的 PR CI → 项目负责人手动 Production 发布顺序。
 
 ## 5. 文档归档规则
 
