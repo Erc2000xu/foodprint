@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>食迹 V1.4 字体方向对比</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://cdn-font.hyperos.mi.com/font/css?family=MiSans_VF:VF:Chinese_Simplify,Latin&display=swap" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-lite-webfont@1.1.0/style.css" rel="stylesheet" />
+    <style>
+      @font-face { font-family: 'Source Han Sans SC'; src: url('file:///Users/eric.xu/Library/Fonts/SourceHanSansCN-Regular.otf') format('opentype'); font-weight: 400; }
+      @font-face { font-family: 'Source Han Sans SC'; src: url('file:///Users/eric.xu/Library/Fonts/思源黑体SourceHanSansCN-Medium.otf') format('opentype'); font-weight: 500 700; }
+      @font-face { font-family: 'ZCOOL XiaoWei'; src: url('file:///private/tmp/foodprint-font-audit/zcool-xiaowei.ttf') format('truetype'); }
+      :root { --ink:#29241f; --muted:#80766d; --line:#e8ded2; --paper:#fcfaf6; --card:#fffdfa; --accent:#df6c45; --soft:#f5e7d8; --sage:#6d897d; }
+      * { box-sizing:border-box; }
+      body { width:2200px; margin:0; padding:118px 132px 116px; color:var(--ink); background:linear-gradient(132deg,#fffdf9 0%,#f8f1e9 52%,#f1e5d8 100%); font-family:'Source Han Sans SC','Noto Sans SC',sans-serif; }
+      .eyebrow { color:var(--accent); font-size:24px; font-weight:700; letter-spacing:.18em; }
+      h1 { margin:20px 0 14px; font-size:64px; letter-spacing:-.035em; line-height:1.08; }
+      .intro { width:1560px; color:#655c54; font-size:28px; line-height:1.7; }
+      .rule { height:2px; margin:66px 0 54px; background:var(--ink); opacity:.16; }
+      .grid { display:grid; grid-template-columns:1fr 1fr; gap:34px; }
+      .section-head { grid-column:1/-1; display:flex; align-items:baseline; gap:24px; margin-top:4px; }
+      .num { color:var(--accent); font-size:24px; letter-spacing:.13em; font-weight:700; }
+      h2 { margin:0; font-size:38px; letter-spacing:-.02em; }
+      .desc { color:var(--muted); font-size:23px; }
+      .card { min-height:410px; padding:40px 44px 34px; border:1px solid var(--line); border-radius:28px; background:rgba(255,253,250,.88); box-shadow:0 16px 44px rgba(86,63,42,.055); overflow:hidden; }
+      .card.recommended { border:2px solid #d77b58; box-shadow:0 18px 46px rgba(197,97,59,.13); }
+      .top { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+      .name { font-size:30px; font-weight:700; letter-spacing:-.015em; }
+      .tag { flex:0 0 auto; padding:8px 13px; border-radius:999px; background:var(--soft); color:#a74a2d; font-size:18px; font-weight:700; }
+      .tag.safe { background:#e6eee9; color:#497367; }
+      .meta { min-height:53px; margin-top:8px; color:var(--muted); font-size:19px; line-height:1.45; }
+      .sample { margin-top:34px; font-size:59px; line-height:1.25; letter-spacing:-.055em; white-space:nowrap; }
+      .sample.small { font-size:46px; letter-spacing:-.035em; }
+      .note { margin-top:24px; color:#766b61; font-size:18px; line-height:1.5; }
+      .source { font-family:'Source Han Sans SC','Noto Sans SC',sans-serif; font-weight:500; }
+      .mi { font-family:'MiSans','Source Han Sans SC',sans-serif; font-weight:600; }
+      .ali { font-family:'Noto Sans SC','Source Han Sans SC',sans-serif; font-weight:600; }
+      .zcool { font-family:'ZCOOL XiaoWei',serif; font-weight:400; }
+      .mashan { font-family:'Ma Shan Zheng',cursive; font-weight:400; font-size:72px; letter-spacing:.015em; }
+      .wenkai { font-family:'LXGW WenKai Lite','Source Han Sans SC',sans-serif; font-weight:400; }
+      .system { font-family:'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; font-weight:600; }
+      .usage { margin:44px 0 52px; padding:30px 36px; border-radius:22px; background:#2c2925; color:#fffaf2; display:flex; gap:55px; align-items:center; }
+      .usage strong { color:#f0a080; font-size:24px; letter-spacing:.08em; white-space:nowrap; }
+      .usage span { font-size:23px; line-height:1.6; color:#e7ded3; }
+      footer { margin-top:48px; color:#80766d; font-size:18px; line-height:1.65; }
+      footer b { color:#51483f; }
+    </style>
+  </head>
+  <body>
+    <div class="eyebrow">FOODPRINT · V1.4 TYPOGRAPHY STUDY</div>
+    <h1>两种字体，分清“好用”和“有感觉”</h1>
+    <div class="intro">只落地一款功能字体 + 一款情绪字体。功能字体服务所有可读、可填、可扫读的信息；创意字体只留给一行短 slogan，让食迹有一点手写的温度，但不牺牲效率。</div>
+    <div class="rule"></div>
+
+    <section class="grid">
+      <div class="section-head"><span class="num">01 / 功能字体</span><h2>主力字：页面、表单、正文、地点名</h2><span class="desc">这类字体决定每天是否好用</span></div>
+      <article class="card recommended">
+        <div class="top"><div class="name">思源黑体 SC</div><span class="tag safe">推荐落地</span></div>
+        <div class="meta">开源 OFL · 可自托管 · 可做子集 · 技术与授权最稳</div>
+        <div class="sample source">今天想去哪儿吃？</div>
+        <div class="sample small source">山居小馆 · 上海静安 · 4.8 分</div>
+        <div class="note">中性、清爽、识别稳定；适合把产品体验做得安静、可信。</div>
+      </article>
+      <article class="card">
+        <div class="top"><div class="name">MiSans</div><span class="tag">待确认嵌入授权</span></div>
+        <div class="meta">小米官方免费许可 · 视觉很现代 · 网页自托管需法务确认</div>
+        <div class="sample mi">今天想去哪儿吃？</div>
+        <div class="sample small mi">山居小馆 · 上海静安 · 4.8 分</div>
+        <div class="note">更圆润、更年轻；若获网页嵌入确认，可作为“更有品牌感”的备选。</div>
+      </article>
+      <article class="card">
+        <div class="top"><div class="name">阿里巴巴普惠体 3.0</div><span class="tag">待确认嵌入授权</span></div>
+        <div class="meta">企业友好、常见于品牌界面 · 本样张以同类开源字形作比例占位</div>
+        <div class="sample ali">今天想去哪儿吃？</div>
+        <div class="sample small ali">山居小馆 · 上海静安 · 4.8 分</div>
+        <div class="note">可以作为产品方向参考；其字体文件再发布/网页嵌入应取得官方明确许可后再上。</div>
+      </article>
+      <article class="card">
+        <div class="top"><div class="name">系统中文字体</div><span class="tag safe">零资源成本</span></div>
+        <div class="meta">PingFang SC / Hiragino / 微软雅黑回退栈 · 当前项目基础</div>
+        <div class="sample system">今天想去哪儿吃？</div>
+        <div class="sample small system">山居小馆 · 上海静安 · 4.8 分</div>
+        <div class="note">加载最快；但跨设备的样子不完全一致，品牌记忆较弱。</div>
+      </article>
+    </section>
+
+    <div class="usage"><strong>功能字的范围</strong><span>导航、按钮、输入框、地点名、用户笔记、评分、地址、错误提示、隐私说明、所有长文。<br>结论：V1.4 采用 <b>思源黑体 SC</b>，保留系统字体为加载失败回退。</span></div>
+
+    <section class="grid">
+      <div class="section-head"><span class="num">02 / 创意字体</span><h2>情绪字：只用于一行的生活化 slogan</h2><span class="desc">少用，才会显得有记忆点</span></div>
+      <article class="card recommended">
+        <div class="top"><div class="name">站酷小薇体</div><span class="tag safe">推荐落地</span></div>
+        <div class="meta">OFL 开源 · 书卷感的宋体气质 · 不做传统餐饮风</div>
+        <div class="sample zcool">这一顿，值得好好记下。</div>
+        <div class="sample small zcool">听说不错，找天去试试。</div>
+        <div class="note">我最推荐：克制、有温度，和食迹的“记录感”相合，读起来也稳。</div>
+      </article>
+      <article class="card">
+        <div class="top"><div class="name">马善政</div><span class="tag safe">强情绪备选</span></div>
+        <div class="meta">OFL 开源 · 毛笔手写 · 视觉记忆最强</div>
+        <div class="sample mashan">这一顿，值得好好记下。</div>
+        <div class="sample small mashan">听说不错，找天去试试。</div>
+        <div class="note">像朋友写下的一句话；只适合首页或空状态，不能放在密集内容上。</div>
+      </article>
+      <article class="card">
+        <div class="top"><div class="name">霞鹜文楷</div><span class="tag">条件性备选</span></div>
+        <div class="meta">手写楷体 · 最生活化、最亲近 · Web 字体转换/嵌入需按作者说明处理</div>
+        <div class="sample wenkai">这一顿，值得好好记下。</div>
+        <div class="sample small wenkai">听说不错，找天去试试。</div>
+        <div class="note">方向上很适合“饭后写笔记”，但需先确认官方 Web 字体包或授权路径再排入开发。</div>
+      </article>
+      <article class="card">
+        <div class="top"><div class="name">创意字的边界</div><span class="tag">必须遵守</span></div>
+        <div class="meta">只出现 4 个固定场景，每个场景最多一行</div>
+        <div class="sample zcool">今天想去哪儿吃？</div>
+        <div class="sample small source">不用于：按钮 · 输入 · 地址 · 错误 · 用户长文</div>
+        <div class="note">创意字是“停一下”的引子，不是阅读系统本身。</div>
+      </article>
+    </section>
+
+    <footer><b>建议先敲定：</b>思源黑体 SC（功能） + 站酷小薇体（创意）。两者均为 OFL，可用 Next.js 本地托管；上线前保留 LICENSE/OFL 文件、记录来源和版本。<br>说明：这是用于方向决策的真实字体字样板。阿里巴巴普惠体卡片目前不冒充其字样，待拿到可用于网页嵌入的官方授权或 Webfont 源后，补入其真实渲染再做最终比较。</footer>
+  </body>
+</html>
