@@ -45,6 +45,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Supabase CLI local link/cache state. Project references and local runtime data
+# must remain outside version control; migrations and config.toml are tracked.
+supabase/.temp/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
