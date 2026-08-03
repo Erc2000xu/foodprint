@@ -151,7 +151,11 @@ if (!visitFunction) {
 checkFunction("normalize_group_place_archive_metadata");
 check(
   "trigger group_places_normalize_archive_metadata",
-  /CREATE\s+TRIGGER\s+group_places_normalize_archive_metadata[\s\S]*?EXECUTE\s+FUNCTION\s+public\.normalize_group_place_archive_metadata\(\)/i,
+  // pg_dump may omit the `public.` qualifier for the trigger function when
+  // the dump already establishes that schema as the active search path. Keep
+  // the check strict about the trigger name, target table, row scope, and
+  // function name while accepting both equivalent renderings.
+  /CREATE\s+TRIGGER\s+group_places_normalize_archive_metadata\b[^;]*?ON\s+public\.group_places\s+FOR\s+EACH\s+ROW\s+EXECUTE\s+FUNCTION\s+(?:public\.)?normalize_group_place_archive_metadata\s*\(\)/i,
 );
 
 if (failures.size > 0) {
