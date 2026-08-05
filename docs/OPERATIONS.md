@@ -43,7 +43,9 @@
 3. 再将两条新增 migration 推至 Production。它们是只增不删的迁移，历史地点会进入“我的 → 完善地点检索信息”队列，不会被隐藏或重写。
 4. 部署应用后检查 `/api/health`、首页 URL 筛选恢复、详情页“返回结果”、静态地图失败时的列表降级，以及私有照片只以短期签名 URL 展示。
 
-## 腾讯云运行准备（ICP 完成前不切流）
+## 腾讯云运行准备（V2 完整交接另见下方链接）
+
+本节保留 V1 Docker 可运行性说明；实际 V2 域名切流、私域用户治理、腾讯云 Security Group、Nginx、TLS、发布和回滚，必须遵循 [V2 大陆域名与腾讯云迁移开发交接](./FOODPRINT_V2_MAINLAND_DOMAIN_MIGRATION_DEVELOPMENT_HANDOFF_2026-08-05.md)。本节的 `docker run -p 3000:3000` 仅用于受控连通性验证，不得作为 V2 正式公网运行方式。
 
 V1 已使用 Next.js standalone 输出，Docker 镜像不依赖 Vercel Runtime。腾讯云 Linux 主机可在项目根目录执行：
 
