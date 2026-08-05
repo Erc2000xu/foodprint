@@ -29,10 +29,11 @@ P0 是唯一立即阻塞项：V1.2 的地点检索入口依赖稳定高德服务
 | COPY_VOICE_SYSTEM.md | 生效 | 品牌语气、页面标题、功能文案和状态文案台账 | 每次新增或修改用户可见文字 |
 | FOODPRINT_V1_3_X_ITERATION_HANDOFF_2026-07-29.md | 生效 | V1.3.1/V1.3.2 已确认规则、完成情况与下次开发顺序 | 下一次小迭代开发前 |
 | FOODPRINT_V1_3_3_DEVELOPMENT_HANDOFF_2026-07-30.md | 待批准后使用 | V1.3.3 产品、视觉、管理权限与开发顺序总交接 | V1.3.3 编码前 |
-| specs/2026-07-v1-4-typography-and-copy-workbook.md | 已批准，待开发 | 全页面已定稿功能文案、创意标题与字体使用基线 | V1.4 开发交接单 |
-| FOODPRINT_V1_4_DEVELOPMENT_HANDOFF_2026-08-03.md | 已批准，待开发 | V1.4 字体、文案、品牌化清洁与实施/验收顺序 | 开始 V1.4 编码前 |
-| specs/2026-08-v1-4-1-ui-polish.md | 开发完成，待 Preview 验收（2026-08-05） | 地点卡片管理按钮资产与发现/管理控件对齐修复 | V1.4 Preview 反馈；候选 A 已确认 |
-| acceptance/V1_4_1_PREVIEW_ACCEPTANCE_CHECKLIST_2026-08-05.md | 待验收 | V1.4.1 Preview 的尺寸、角色、交互和视觉验收 | 目标分支 Preview |
+| specs/2026-07-v1-4-typography-and-copy-workbook.md | 实施完成，Preview 验收随 V1.4.1 收尾确认（2026-08-05） | 全页面已定稿功能文案、创意标题与字体使用基线 | V1.4 开发交接单 |
+| FOODPRINT_V1_4_DEVELOPMENT_HANDOFF_2026-08-03.md | 实施完成，已归档（2026-08-05） | V1.4 字体、文案、品牌化清洁与实施/验收顺序 | V1.4 收尾记录 |
+| specs/2026-08-v1-4-1-ui-polish.md | Preview 验收通过，已合入 main（2026-08-05） | 地点卡片管理按钮资产与发现/管理控件对齐修复 | V1.4 Preview 反馈；候选 A 已确认 |
+| acceptance/V1_4_1_PREVIEW_ACCEPTANCE_CHECKLIST_2026-08-05.md | 项目负责人验收通过（2026-08-05） | V1.4.1 Preview 的尺寸、角色、交互和视觉验收 | 目标分支 Preview |
+| FOODPRINT_V1_4_CLOSURE_AND_V2_HANDOFF_2026-08-05.md | 生效 | V1.4 收尾事实、已知限制与 V2 开发启动门槛 | V2 立项与 Spec 批准前 |
 | specs/2026-07-v2-mainland-maps-compliance.md | 待立项 | 腾讯云/.com.cn 迁移、动态地图、合规 | ICP、迁移与合规评审 |
 | specs/2026-07-v3-editorial-visual-system.md | 待立项 | 视觉系统、纸张感时间线、小碗图标 | V2 稳定、真实用户反馈 |
 | SECURITY_COMPLIANCE_BASELINE.md | 生效 | 安全、隐私、用户权利和大陆发布检查 | 涉及数据、内容、部署的每个版本 |
