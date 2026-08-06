@@ -1,0 +1,5 @@
+# Install as /etc/sudoers.d/foodprint-deploy with mode 0440.
+# The deploy account must not be added to the docker group.
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart foodprint-compose.service
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl status foodprint-compose.service
+deploy ALL=(root) NOPASSWD: /usr/bin/systemctl is-active foodprint-compose.service

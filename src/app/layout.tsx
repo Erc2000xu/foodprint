@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { SiteComplianceFooter } from "@/components/compliance/site-compliance-footer";
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import "./globals.css";
 
@@ -17,6 +18,8 @@ export const viewport: Viewport = {
   themeColor: "#f7f3e9",
 };
 
+const deploymentVersion = process.env.DEPLOYMENT_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "local";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -24,7 +27,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body>{children}<PwaRegister buildId={process.env.VERCEL_GIT_COMMIT_SHA ?? "local"} /></body>
+      <body>
+        {children}
+        <SiteComplianceFooter />
+        <PwaRegister buildId={deploymentVersion} />
+      </body>
     </html>
   );
 }

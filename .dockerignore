@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo
+
+# Secrets and local environment files
+.env*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Repository and local tooling
+.git
+.github
+.vercel
+.DS_Store
+*.log
+
+# Non-runtime project material
+docs
+tests
+scripts
+supabase/.temp

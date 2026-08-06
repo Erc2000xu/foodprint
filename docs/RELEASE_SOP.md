@@ -1,24 +1,24 @@
-# 食迹 Foodprint｜免费版单生产环境发布与数据库迁移 SOP
+# 食迹 Foodprint｜免费版单生产环境与应用发布 SOP
 
-> 状态：已确认采用方案 B；完成一次性配置前，自动发布保持关闭
+> 状态：已确认采用方案 B；V2-A 应用已运行在腾讯云，腾讯云自动发布仍待实现
 > 生效范围：任何需要进入 GitHub 的代码、测试、migration、Edge Function 或正式开发文档
 > 关联决策：[免费版单生产环境发布管道](decisions/2026-08-03-free-tier-release-pipeline.md)
 
 ## 1. 一句话规则
 
-**Codex 负责代码和 migration；GitHub Actions 是唯一可以写入远端 Supabase、部署 Edge Function、触发 Vercel 的执行者；项目负责人通过手动启动一次 Production workflow 作出最后发布决定。**
+**GitHub 是代码源；GitHub Actions 是唯一可以写入远端 Supabase、部署 Edge Function 和触发受控生产发布的执行者。V2-A 当前正式应用运行在腾讯云，本轮因自动化尚未完成使用了人工部署例外；项目负责人通过手动启动 Production workflow 作出最后发布决定。**
 
-合入 main 只更新代码仓库，绝不会自动改动 Supabase 或 Vercel。任何 Codex 对话都不得改用本机 supabase db push、生产 SQL Editor 或 vercel --prod 来临时发布。失败时停在 workflow 的错误处处理，不能复制 SQL 绕过。
+合入 main 只更新代码仓库，绝不会自动改动 Supabase 或腾讯云。任何 Codex 对话都不得改用本机 supabase db push、生产 SQL Editor、vercel --prod 或直接修改腾讯云源码来临时发布。失败时停在 workflow 的错误处处理，不能复制 SQL 绕过。
 
 ## 2. 环境与分支
 
-| 层级 | Git 分支 | Supabase / Vercel | 允许的数据与用途 |
+| 层级 | Git 分支 | Supabase / 应用运行时 | 允许的数据与用途 |
 | --- | --- | --- | --- |
 | 本地开发 | codex/<scope> | 本机、GitHub CI 的临时 Supabase 容器；不部署 | 合成测试数据与开发验证 |
 | 代码审核 | codex/<scope> → main 的 PR | GitHub CI；不连接真实 Supabase | 应用检查与全部 migration 的干净重放 |
-| 正式生产 | main | 当前 production Supabase、Production Vercel | 真实受控数据 |
+| 正式生产 | main | 当前 production Supabase、腾讯云 Lighthouse；Vercel 仅作稳定期回滚 | 真实受控数据 |
 
-当前免费额度已被两个既有 Supabase 项目占用，因此不再依赖第三个 staging 项目。也不让任意 Vercel Preview 连接 production Supabase。
+当前免费额度已被两个既有 Supabase 项目占用，因此不再依赖第三个 staging 项目。也不让任意 Preview 连接 production Supabase；Vercel 旧部署只作为回滚落点。
 
 ## 3. 标准生命周期
 
@@ -34,7 +34,7 @@ migration-integrity 会在 GitHub 临时 runner 上从零启动 Supabase，并�
 ### B. 合入 main
 
 1. 项目负责人确认 PR 范围、CI 结果和迁移风险后合入 main。
-2. 合入本身不触发数据库变更或 Vercel 部署。
+2. 合入本身不触发数据库变更或腾讯云部署。
 3. 若 migration 包含删除、重写、大批量回填或权限放宽，先按 OPERATIONS.md 完成 Owner 数据导出，并在发布记录中说明影响和向前修复方式。
 
 ### C. 正式发布
@@ -44,12 +44,12 @@ migration-integrity 会在 GitHub 临时 runner 上从零启动 Supabase，并�
 3. workflow 会重新运行应用检查和干净数据库 migration 重放，然后严格按以下顺序执行：
 
 ~~~text
-migration dry-run → production db push → production Edge Functions → Vercel Production Deploy Hook
+migration dry-run → production db push → production Edge Functions → 腾讯云不可变镜像构建/部署 → 健康检查
 ~~~
 
-4. 在 Vercel 与 /api/health 完成生产确认，并记录版本、验收、限制和下一步。
+4. 在腾讯云正式域名与 `/api/health` 完成生产确认，并记录版本、验收、限制和下一步；Vercel 仅在回滚场景使用。
 
-生产 migration 或 Edge Function 失败时，Vercel Hook 不会被调用，旧应用继续运行。Vercel 构建失败时，回退应用到已验证部署；数据库只通过新的向前 migration 修复，不删除 migration history 或对生产执行 reset。
+生产 migration 或 Edge Function 失败时，腾讯云应用不会切换。腾讯云构建或健康检查失败时，保留上一条已验证 release；必要时再切换到 Vercel 回滚落点。数据库只通过新的向前 migration 修复，不删除 migration history 或对生产执行 reset。
 
 ## 4. 数据库规则
 
@@ -66,7 +66,7 @@ migration dry-run → production db push → production Edge Functions → Verce
 | Git 仓库 | migration、workflow、变量名、脱敏 SOP | token、数据库密码、Deploy Hook URL、Service Role Key、真实数据 |
 | GitHub Repository Actions secrets | production 的发布凭据 | 聊天、代码或文档中的明文密钥 |
 | GitHub repository variable | RELEASE_AUTOMATION_ENABLED=true，仅在完整配置后启用 | 密钥、数据库密码或 Hook URL |
-| Vercel Production | production 应用变量与 Service Role Key（仅受控服务端任务） | 测试或本机凭据 |
+| 腾讯云生产环境 | production 应用变量与 Service Role Key（仅受控服务端任务） | 测试或本机凭据 |
 | Supabase Edge Function Secrets | 高德 Key、APP_ALLOWED_ORIGINS、必要服务端凭据 | GitHub/聊天中明文出现的密钥 |
 
 GitHub Repository Actions secrets 使用以下固定名称：
@@ -78,9 +78,9 @@ GitHub Repository Actions secrets 使用以下固定名称：
 
 采用仓库级 Actions secrets 和手动 workflow，是为了在 GitHub Free 的私有仓库中也能执行，不依赖可能不可用的 Environment 审批功能。
 
-## 6. Vercel 固定配置
+## 6. Vercel 过渡回滚配置
 
-一次性配置完成后，在 vercel.json 关闭 Git 自动部署，保留 Git 仓库连接和一个指向 main 的 Production Deploy Hook：
+Vercel 不再是 V2-A 正式运行时。稳定期内保留旧 Production 部署和必要的回滚配置；若未来继续使用 Deploy Hook，仍须确保它不会连接会写入 production 的 Preview 环境。
 
 ~~~json
 {
@@ -99,20 +99,20 @@ GitHub Repository Actions secrets 使用以下固定名称：
 
 ## 7. GitHub 与本机网络
 
-本机只负责把变更推到 GitHub。之后 GitHub Actions、Supabase、Vercel 三者之间的发布是云端到云端通信，不经过本机 Wi-Fi 或 VPN。
+本机只负责把变更推到 GitHub。之后 GitHub Actions、Supabase 和腾讯云之间的发布是云端到云端通信，不经过本机 Wi-Fi 或 VPN；Vercel 仅作为稳定期回滚环境。
 
 - Git remote 使用 SSH；默认配置 Keychain，必要时经 ssh.github.com:443，避免部分网络封锁 22 端口。
 - gh 只负责 PR/API，采用浏览器登录一次；它失效不应成为 Git push 的唯一依赖。
 - 当前 Mac 已实测 GitHub、Vercel、Supabase HTTPS 可达，GitHub SSH 443 可达，且 HTTPS Git push dry-run 成功。网络变化后，先运行发布前检查，而不是重试多套登录方式。
-- 大陆用户访问 Vercel/Supabase 的稳定性是产品运行环境问题，与开发电脑的 VPN 是两件事；V2 的腾讯云/备案切流仍按既有 Spec 与 OPERATIONS.md 单独推进。
+- 大陆用户访问 Vercel/Supabase 的稳定性是产品运行环境问题，与开发电脑的 VPN 是两件事；V2 的腾讯云/备案切流已经完成，后续按 Spec 与 OPERATIONS.md 进行稳定期运维。
 
 ## 8. 失败时唯一正确动作
 
 | 失败位置 | 应做什么 | 不得做什么 |
 | --- | --- | --- |
 | GitHub CI 或 release 验证 | 修正分支中的代码或 migration，重新推送或重新发 PR | 直接在生产修改、删改已上线 migration |
-| production db push | workflow 停在 Vercel 前；审查错误后新增向前修复 | 使用 --include-all、reset 或盲目 repair |
-| Vercel 构建 | 保留或 Promote 上一版已验证部署，修复后再次手动发 workflow | 用本机 vercel --prod 跳过 workflow |
+| production db push | workflow 停在应用发布前；审查错误后新增向前修复 | 使用 --include-all、reset 或盲目 repair |
+| 腾讯云构建/健康检查 | 保留上一条已验证 release，修复后重新从 GitHub 发布；必要时切换 Vercel 回滚点 | 直接在服务器改源码或用未审查镜像覆盖生产 |
 | 手动确认错误 | 不输入 DEPLOY_PRODUCTION；检查 main 是否为要发布的提交 | 从其他分支或旧提交发布 |
 
 ## 9. 一次性启用清单
@@ -120,11 +120,11 @@ GitHub Repository Actions secrets 使用以下固定名称：
 项目负责人只在浏览器完成账户与密钥操作；Codex 负责生成、核对和验证，但不索取任何 secret：
 
 1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。若本地有、远端 history 没有的旧版本，先运行 Verify legacy migration state；它只导出 public schema 到临时 runner 并核对旧迁移留下的对象，绝不写入数据、schema 或 history。只有两项审计都通过后，才可逐条批准 repair 为 applied，不重放 SQL。
-2. 在 GitHub Repository Actions secrets 添加四个固定名称的生产凭据；不要发送给 Codex。
-3. 在 Vercel 创建一个指向 main 的 Production Deploy Hook，并核对 Production 环境变量。
+2. 在 GitHub Repository Actions secrets 添加 Supabase 生产凭据，以及腾讯云发布 workflow 所需的受控凭据；名称以最终 workflow 为准，不要发送给 Codex。
+3. 核对 Vercel 旧 Production 部署可回滚，并核对 Production 环境变量。
 4. 在 Supabase 配置 production Edge Function secrets 与 Origin 白名单。
 5. 完成 SSH public key 配置，验证后将 Git remote 切换至 SSH；单独恢复 gh 的浏览器登录。
-6. 完成前五项后，才由 Codex 合入 vercel.json 的自动部署关闭设置；该提交不应包含任何 schema 或产品功能变更。
-7. 确认 Vercel 的 Production Deploy Hook 已可用后，将 GitHub repository variable RELEASE_AUTOMATION_ENABLED 设为 true，并手动运行一次 Release production 完成全链路演练。
+6. 完成前五项后，新增腾讯云发布 workflow；该提交不应包含任何 schema 或产品功能变更。
+7. 完成腾讯云 workflow 的 dry-run、预检、健康检查和回滚演练后，将对应的 GitHub repository variable 设为 true，并手动运行一次 Release production 完成全链路演练。
 
-完成后，日常工作不再需要在终端登录 GitHub、把 SQL 粘贴到 Supabase，或手动在 Vercel 点击部署。
+完成后，日常工作不再需要在终端登录 GitHub、把 SQL 粘贴到 Supabase，或直接 SSH 到腾讯云上传应用；GitHub 仍是代码源，腾讯云只是运行环境。

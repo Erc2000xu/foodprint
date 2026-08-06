@@ -1,6 +1,6 @@
 # 食迹 Foodprint｜规格与交付索引
 
-> 更新日期：2026-08-03
+> 更新日期：2026-08-06
 > 使用方式：开发从上至下推进。每一项由项目负责人明确批准后，才可将状态改为“开发中”并开始代码变更。
 
 ## 1. 总体交付链路
@@ -31,9 +31,10 @@ P0 是唯一立即阻塞项：V1.2 的地点检索入口依赖稳定高德服务
 | FOODPRINT_V1_3_3_DEVELOPMENT_HANDOFF_2026-07-30.md | 待批准后使用 | V1.3.3 产品、视觉、管理权限与开发顺序总交接 | V1.3.3 编码前 |
 | specs/2026-07-v1-4-typography-and-copy-workbook.md | 已批准，待开发 | 全页面已定稿功能文案、创意标题与字体使用基线 | V1.4 开发交接单 |
 | FOODPRINT_V1_4_DEVELOPMENT_HANDOFF_2026-08-03.md | 已批准，待开发 | V1.4 字体、文案、品牌化清洁与实施/验收顺序 | 开始 V1.4 编码前 |
-| specs/2026-07-v2-mainland-maps-compliance.md | 待批准 | 腾讯云/.com.cn 迁移、动态地图与私域运营边界 | 腾讯云预发布、迁移演练、权限验收 |
-| FOODPRINT_V2_MAINLAND_DOMAIN_MIGRATION_DEVELOPMENT_HANDOFF_2026-08-05.md | 待批准 | V2 域名迁移、腾讯云部署、受控邀请、发布/回滚和验收的开发唯一交接 | 项目负责人批准 V2 范围 |
-| decisions/2026-08-05-v2-domain-runtime-and-data-plane-boundary.md | 待批准 | V2 先迁应用运行环境、数据平面另立 V2-B 的架构边界 | V2 实施前复核 |
+| specs/2026-07-v2-mainland-maps-compliance.md | V2-A 已发布，进入稳定期 | 腾讯云/.com.cn 迁移、动态地图与私域运营边界 | 角色化回归、稳定观察、恢复演练 |
+| FOODPRINT_V2_MAINLAND_DOMAIN_MIGRATION_DEVELOPMENT_HANDOFF_2026-08-05.md | V2-A 已实施，作为当前线上交接 | V2 域名迁移、腾讯云部署、发布/回滚和验收的唯一交接 | 自动化发布与稳定期收口 |
+| decisions/2026-08-05-v2-domain-runtime-and-data-plane-boundary.md | 已确认并执行（V2-A）；V2-B 待立项 | V2 先迁应用运行环境、数据平面另立 V2-B 的架构边界 | 数据平面迁移另行立项 |
+| specs/2026-08-icp-filing-display.md | 已完成（2026-08-06） | 首页全局 ICP 备案号、工信部查询链接和后续公安备案展示边界 | 公安联网备案信息另立小任务 |
 | specs/2026-07-v3-editorial-visual-system.md | 待立项 | 视觉系统、纸张感时间线、小碗图标 | V2 稳定、真实用户反馈 |
 | SECURITY_COMPLIANCE_BASELINE.md | 生效 | 安全、隐私、用户权利和大陆发布检查 | 涉及数据、内容、部署的每个版本 |
 
@@ -41,7 +42,7 @@ P0 是唯一立即阻塞项：V1.2 的地点检索入口依赖稳定高德服务
 
 1. 先批准 P0；完成后用真实页面和真机确认高德恢复，再讨论 V1.2 的未决产品选项。
 2. V1.2 上线并观察候选地点真实使用后，确认 V1.3 的迁移字段、用户退出后的历史可见性和图片限制。
-3. ICP 备案完成时，不自动开始 V2；先开展部署、数据流、第三方服务和合规复核。
+3. V2-A 已完成 DNS 切流；当前优先完成角色化业务回归、7 天稳定观察、恢复演练和 GitHub Actions 腾讯云发布管道。ICP 后续公安联网备案展示另立小任务。
 4. V3 以用户反馈和设计探索为输入，先出可点击原型/视觉基线，再实施。
 
 ## 4. 全版本工程检查
