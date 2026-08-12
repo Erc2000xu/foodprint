@@ -10,6 +10,10 @@ V1.1.1 的邀请与成员治理需求、权限规则和验收标准见 [V1.1.1 �
 
 V1.3.3“记一顿”表单故障修复、生产迁移、验收结果与后续运维注意事项见 [V1.3.3 表单故障修复交接](docs/FOODPRINT_V1_3_3_MARK_FORM_BUGFIX_HANDOFF_2026-08-03.md)。
 
+V2-A 的大陆域名与腾讯云迁移文档、运行边界、切流/回滚顺序和负责人外部配置清单见 [V2 大陆域名与腾讯云迁移开发交接](docs/FOODPRINT_V2_MAINLAND_DOMAIN_MIGRATION_DEVELOPMENT_HANDOFF_2026-08-05.md)。V2-A 已完成 `foodprint.com.cn` 的腾讯云上线；当前进入稳定期，仍以交接文档中的剩余回归、监控和自动化发布事项为准。
+
+本次上线记录见 [V2-A 腾讯云上线记录](docs/releases/2026-08-06-v2-tencent-cutover.md)。
+
 从 V1.1.1 收口后，产品定位与当前版本基线以[产品总览](docs/PRODUCT.md)为准；版本方向、状态与进入条件以[产品路线图](docs/ROADMAP.md)为准；每次开发都遵循[产品开发工作流](docs/DEVELOPMENT_WORKFLOW.md)。
 
 当前 MVP 已具备：邀请制邮箱注册/登录、共同小组与成员管理、高德地点搜索、真实体验标记、共同地图与列表、想去、组合筛选、私有照片画廊、PWA 安装、离线壳和数据导出。界面以 iPhone Air 宽度（420px）为优先移动端基线。
@@ -19,7 +23,9 @@ V1.3.3“记一顿”表单故障修复、生产迁移、验收结果与后续�
 - Next.js App Router + TypeScript + Tailwind CSS 4
 - Node.js 22.22.2（见 `.nvmrc`）
 - Vitest + Testing Library
-- 后续首发：Supabase Auth / PostgreSQL / Storage、 高德 JS API 2.0、Vercel
+- 生产运行：腾讯云轻量应用服务器 + Nginx + Docker Compose
+- 后端数据平面：Supabase Auth / PostgreSQL / Storage / Edge Functions
+- 过渡回滚：Vercel 保留旧生产部署，不作为当前正式入口
 
 ## 本地启动
 
@@ -42,7 +48,7 @@ npm run build
 
 ## 环境变量
 
-`.env.example` 是唯一可提交的模板。实际值请只填写在 `.env.local` 和 Vercel 的私密环境变量中。
+`.env.example` 是唯一可提交的模板。实际值请只填写在 `.env.local`、腾讯云 `/etc/foodprint/production.env` 或受控平台的私密环境变量中；真实配置文件不得进入 Git。
 
 | 变量 | 用途 | 可见性 |
 | --- | --- | --- |
@@ -69,7 +75,7 @@ npm run build
 - `PoiSearchProvider`
 - `MapProvider`
 
-业务功能将在后续阶段依赖这些接口，不能直接在页面和组件中散落调用 Supabase、高德或存储服务。这样可在未来以腾讯云 COS、国内认证和其他地图适配器替换底层实现，而不重写业务组件。V1 的生产容器、迁移步骤及备案后腾讯云切流清单见 [docs/OPERATIONS.md](docs/OPERATIONS.md)；免费版 Supabase 的单生产发布顺序见 [docs/RELEASE_SOP.md](docs/RELEASE_SOP.md)。
+业务功能将在后续阶段依赖这些接口，不能直接在页面和组件中散落调用 Supabase、高德或存储服务。这样可在未来以腾讯云 COS、国内认证和其他地图适配器替换底层实现，而不重写业务组件。当前腾讯云生产容器、域名、回滚和后续运维清单见 [docs/OPERATIONS.md](docs/OPERATIONS.md)；数据库/Edge Function 发布顺序和未来腾讯云自动部署边界见 [docs/RELEASE_SOP.md](docs/RELEASE_SOP.md)。
 
 ## 高德免费版硬性约束
 
@@ -77,12 +83,12 @@ Foodprint 中长期只使用高德开放平台免费版在当前主体、用途�
 
 ## 当前部署要点
 
-1. 在 Vercel 配置 Supabase 公共变量及高德 JS Key / JS 安全密钥；不要把高德 Web 服务 Key 放到 Vercel 或浏览器。
+1. 在腾讯云生产环境配置 Supabase 公共变量及高德 JS Key / JS 安全密钥；不要把高德 Web 服务 Key 放到浏览器。Vercel 仅作为过渡期回滚环境保留。
 2. 在 Supabase Edge Function Secrets 中配置 `AMAP_WEBSERVICE_KEY` 与 `APP_ALLOWED_ORIGINS`，然后同时部署 `amap-poi-search` 和 `amap-static-map`。`APP_ALLOWED_ORIGINS` 只填写精确的生产/本地地址；地点搜索与静态地图均经这些函数调用高德，避免公开 Web 服务 Key。
-3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。先提交 migration 并通过 CI；项目负责人手动批准后，GitHub Actions 才依序应用到 production 并触发部署。不得在生产 SQL Editor 粘贴常规 migration，也不得从本机临时执行 `db push`。
+3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。先提交 migration 并通过 CI；项目负责人手动批准后，GitHub Actions 才依序应用到 production。当前腾讯云应用发布仍是本轮迁移期间的人工例外，后续应由 GitHub Actions 接管；不得在生产 SQL Editor 粘贴常规 migration，也不得从本机临时执行 `db push`。
 4. 首个 Owner 可由受控脚本初始化；邀请链接只由 Owner 生成。
 5. PWA 不需要额外密钥：生产环境会自动注册 `/service-worker.js`。图标、manifest、离线页和安装引导已经内置。
-6. Owner 的全量 JSON 导出需要 Vercel Production 中的 `SUPABASE_SERVICE_ROLE_KEY`；该 key 不会发送到浏览器。
+6. Owner 的全量 JSON 导出需要受控生产环境中的 `SUPABASE_SERVICE_ROLE_KEY`；该 key 不会发送到浏览器。
 
 ## 数据库与回滚
 

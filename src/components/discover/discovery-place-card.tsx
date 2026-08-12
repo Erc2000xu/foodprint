@@ -1,5 +1,6 @@
-/* eslint-disable @next/next/no-img-element */
-import Link from "next/link";
+import { PendingNavigationLink } from "@/components/shell/pending-navigation-link";
+import { NavigationIntentLink } from "@/components/navigation/navigation-coordinator";
+import { PrivatePhoto } from "@/components/photo/private-photo";
 import type { MapPlace } from "@/components/map/amap-map";
 import { OpinionCounts } from "@/components/discover/opinion-counts";
 import { WishlistToggle } from "@/components/discover/wishlist-toggle";
@@ -17,6 +18,8 @@ export function DiscoveryPlaceCard({
   categoryLabel,
   nearbyLabel,
   canManage = false,
+  isFirst = false,
+  onNavigate,
 }: {
   place: MapPlace;
   href: string;
@@ -24,6 +27,8 @@ export function DiscoveryPlaceCard({
   categoryLabel: string;
   nearbyLabel?: string;
   canManage?: boolean;
+  isFirst?: boolean;
+  onNavigate?: () => void;
 }) {
   const dishes = place.recommendedItems ?? [];
   const shownDishes = dishes.slice(0, 2);
@@ -34,14 +39,14 @@ export function DiscoveryPlaceCard({
   return <article className="home-place-card-wrap">
     <div className={`home-place-card${canManage ? " home-place-card--manageable" : ""}`}>{canManage && <PlaceManagementControl groupPlaceId={place.id} placeName={place.name} />}
       <div className="home-place-card__media">
-        <Link href={href} className="home-place-card__photo-link" aria-label={`查看 ${place.name}`}>
+        <NavigationIntentLink href={href} source="place-card" className="home-place-card__photo-link" aria-label={`查看 ${place.name}`} onClick={() => onNavigate?.()}>
           <div className="home-place-card__photo">
-            {place.coverPhotoUrl ? <img src={place.coverPhotoUrl} alt={`${place.name} 的真实照片`} /> : <span>暂无照片</span>}
+            {place.coverPhotoUrl ? <PrivatePhoto src={place.coverPhotoUrl} photoId={place.coverPhotoId ?? undefined} alt={`${place.name} 的真实照片`} width={place.coverPhotoWidth ?? 640} height={place.coverPhotoHeight ?? 640} priority={isFirst} /> : <span>暂无照片</span>}
           </div>
-        </Link>
+        </NavigationIntentLink>
         <WishlistToggle groupPlaceId={place.id} initialWanted={Boolean(place.savedForLater)} />
       </div>
-      <Link href={href} className="home-place-card__body">
+      <PendingNavigationLink href={href} className="home-place-card__body" pendingLabel="正在打开地点…" onClick={() => onNavigate?.()}>
         <p className="home-place-card__meta">{[cuisineLabel || categoryLabel, location].filter(Boolean).join(" · ")}</p>
         <h2>{place.name}</h2>
         <p className="home-place-card__location">{nearbyLabel ? `靠近 ${nearbyLabel} · ` : ""}{place.pricePerPerson !== null && place.pricePerPerson !== undefined ? `人均 ¥${Math.round(place.pricePerPerson)}` : "人均待补充"}</p>
@@ -51,7 +56,7 @@ export function DiscoveryPlaceCard({
         </div> : place.markCount ? <div className="home-place-card__score-line"><b>{place.averageRating.toFixed(1)}</b><span>有 {place.markCount} 位朋友留过记录</span></div> : <div className="home-place-card__score-line"><b>新地点</b><span>已有朋友留下记录</span></div>}
         {hasOpinionCounts ? <OpinionCounts counts={place.goodTagCounts ?? {}} /> : place.sceneTags.length > 0 ? <p className="home-place-card__scenes">适合：{place.sceneTags.map((slug) => sceneTagLabels[slug] ?? slug).join(" · ")}</p> : null}
         {shownDishes.length > 0 ? <div className="home-place-card__recommend"><b>推荐菜</b><span>{shownDishes.join("、")}{remainingDishCount > 0 ? `，等 ${remainingDishCount} 道` : ""}</span></div> : place.review ? <p className="home-place-card__review">{place.review}</p> : null}
-      </Link>
+      </PendingNavigationLink>
     </div>
   </article>;
 }

@@ -59,12 +59,13 @@ Deno.serve(async (request) => {
     const supabase = createClient(supabaseUrl, publishableKey, { global: { headers: { Authorization: authorization } } });
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) return response({ error: "请先登录后再搜索地点。" }, 401, origin);
-    const { data: memberships, error: membershipError } = await supabase.from("group_members").select("group_id").eq("user_id", user.id).eq("status", "active").limit(1);
+    const { data: memberships, error: membershipError } = await supabase.from("group_members").select("group_id, role").eq("user_id", user.id).eq("status", "active");
     if (membershipError) throw membershipError;
     if (!memberships?.length) return response({ error: "你尚未加入可用的共同地图。" }, 403, origin);
 
     const body = await request.json() as { operation?: unknown; keyword?: unknown; location?: { latitude?: unknown; longitude?: unknown }; groupPlaceId?: unknown; placeId?: unknown };
     const operation = body.operation === "districts" ? "districts" : body.operation === "business_area_backfill" ? "business_area_backfill" : "poi_search";
+    if (operation === "business_area_backfill" && !memberships.some((membership) => membership.role === "owner")) return response({ error: "只有 Owner 可以整理地点商圈信息。" }, 403, origin);
     const keyword = typeof body.keyword === "string" ? body.keyword.trim() : "";
     if (operation === "poi_search" && (keyword.length < 2 || keyword.length > 80)) return response({ error: "请输入 2 至 80 个字符的地点名称。" }, 400, origin);
     const amapKey = Deno.env.get("AMAP_WEBSERVICE_KEY");

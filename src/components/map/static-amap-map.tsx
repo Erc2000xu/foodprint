@@ -13,6 +13,8 @@ export function StaticAmapMap({ places, onError }: { places: MapPlace[]; onError
   useEffect(() => {
     let objectUrl = "";
     let cancelled = false;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8_000);
     const load = async () => {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
@@ -22,6 +24,7 @@ export function StaticAmapMap({ places, onError }: { places: MapPlace[]; onError
       }
       const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/amap-static-map`, {
         method: "POST",
+        signal: controller.signal,
         headers: {
           authorization: `Bearer ${session.access_token}`,
           apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
@@ -43,11 +46,11 @@ export function StaticAmapMap({ places, onError }: { places: MapPlace[]; onError
     };
     void load().catch(() => {
       if (!cancelled) {
-        const message = amapFailureMessage("network_failure");
+        const message = amapFailureMessage(controller.signal.aborted ? "provider_timeout" : "network_failure");
         setError(message); onError?.(new Error("static map network failure"));
       }
-    });
-    return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+    }).finally(() => window.clearTimeout(timeout));
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(timeout); if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [places, onError, retryKey]);
 
   if (error) return <div className="map-fallback map-fallback--error"><strong>地图暂时无法显示</strong><span>{error}</span><button className="text-button" type="button" onClick={() => { setError(""); setImageUrl(""); setRetryKey((value) => value + 1); }}>重试地图</button></div>;

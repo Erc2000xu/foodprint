@@ -14,24 +14,14 @@ export async function deleteMyPhoto(_: PhotoDeleteResult, formData: FormData): P
   if (!parsedId.success) return { error: "照片信息无效。" };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "请先登录后再继续。" };
-
-  const { data: photo, error: photoError } = await supabase
-    .from("photos")
-    .select("id, group_place_id, object_key")
-    .eq("id", parsedId.data)
-    .eq("user_id", user.id)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (photoError || !photo) return { error: "找不到这张照片，或你没有删除权限。" };
-
-  const { error: storageError } = await supabase.storage.from("place-photos").remove([photo.object_key]);
-  if (storageError) return { error: "照片文件删除失败，请稍后再试。" };
-  const { error: updateError } = await supabase.from("photos").update({ deleted_at: new Date().toISOString() }).eq("id", photo.id);
-  if (updateError) return { error: "照片记录删除失败，请稍后再试。" };
-
-  revalidatePath(`/place/${photo.group_place_id}`);
+  const { data, error } = await supabase.rpc("delete_my_photo_v2", { p_photo_id: parsedId.data });
+  const result = data?.[0] as { group_place_id?: string; object_keys?: string[] } | undefined;
+  if (error || !result?.group_place_id) return { error: error ? userFacingError(error) : "找不到这张照片，或你没有删除权限。" };
+  if (result.object_keys?.length) {
+    const { error: storageError } = await supabase.storage.from("place-photos").remove(result.object_keys);
+    if (storageError) return { error: "照片内容已隐藏，文件清理待重试。" };
+  }
+  revalidatePath(`/place/${result.group_place_id}`);
   return {};
 }
 

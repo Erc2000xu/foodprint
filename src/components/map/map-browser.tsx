@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { backfillAmapBusinessAreas, getAmapBeijingDistricts, searchAmapPoiTips, type AmapDistrict, type AmapPoiCandidate } from "@/lib/amap/poi-client";
+import { getAmapBeijingDistricts, searchAmapPoiTips, type AmapDistrict, type AmapPoiCandidate } from "@/lib/amap/poi-client";
 import type { MapPlace } from "@/components/map/amap-map";
 import { StaticMapAdapter } from "@/components/map/map-adapter";
 import { DiscoveryPlaceCard } from "@/components/discover/discovery-place-card";
@@ -37,23 +37,32 @@ export function DiscoveryBrowser({ places, cuisineOptions, canManage = false }: 
   const [locationMessage, setLocationMessage] = useState("");
   const [districts, setDistricts] = useState<AmapDistrict[]>([]);
   const [districtError, setDistrictError] = useState("");
+  const [districtLoaded, setDistrictLoaded] = useState(false);
   const [amapSuggestions, setAmapSuggestions] = useState<AmapPoiCandidate[]>([]);
   const [amapError, setAmapError] = useState("");
   const [isSearchingAmap, setIsSearchingAmap] = useState(false);
   const [openMenu, setOpenMenu] = useState<IntentMenu>();
   const intentActionsRef = useRef<HTMLDivElement>(null);
+  const amapRequestId = useRef(0);
+  const amapSearchController = useRef<AbortController | null>(null);
   const cuisineLabelBySlug = useMemo(() => Object.fromEntries(cuisineOptions), [cuisineOptions]) as Record<string, string>;
 
   useEffect(() => {
-    let cancelled = false;
-    void Promise.all([getAmapBeijingDistricts(), backfillAmapBusinessAreas()]).then(([result, backfill]) => {
-      if (cancelled) return;
+    if (openMenu !== "location" || districtLoaded || districts.length > 0) return;
+    const controller = new AbortController();
+    void getAmapBeijingDistricts({ signal: controller.signal }).then((result) => {
+      if (controller.signal.aborted) return;
       setDistricts(result.districts);
       setDistrictError(result.error ?? "");
-      if (backfill.updated > 0) router.refresh();
+      setDistrictLoaded(true);
     });
-    return () => { cancelled = true; };
-  }, [router]);
+    return () => controller.abort();
+  }, [districtLoaded, districts.length, openMenu]);
+
+  useEffect(() => () => {
+    amapRequestId.current += 1;
+    amapSearchController.current?.abort();
+  }, []);
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -76,7 +85,23 @@ export function DiscoveryBrowser({ places, cuisineOptions, canManage = false }: 
   }, [places, state, cuisineLabelBySlug, origin]);
   const activeSearch = hasActiveSearch(state);
   const currentUrl = `${pathname}${params.toString() ? `?${params}` : ""}`;
+  const scrollStorageKey = `foodprint:scroll:${currentUrl}`;
   const recentPlaces = useMemo(() => [...places].sort((left, right) => dateScore(right.lastMarkedAt) - dateScore(left.lastMarkedAt)), [places]);
+  const districtLoading = openMenu === "location" && districts.length === 0 && !districtLoaded && !districtError;
+
+  useEffect(() => {
+    let savedPosition = "";
+    try { savedPosition = sessionStorage.getItem(scrollStorageKey) ?? ""; } catch { return; }
+    const scrollY = Number(savedPosition);
+    if (!Number.isFinite(scrollY) || scrollY < 0) return;
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, behavior: "auto" }));
+    try { sessionStorage.removeItem(scrollStorageKey); } catch { /* Storage can be disabled. */ }
+    return () => window.cancelAnimationFrame(frame);
+  }, [scrollStorageKey]);
+
+  const rememberScrollPosition = () => {
+    try { sessionStorage.setItem(scrollStorageKey, String(Math.max(0, Math.round(window.scrollY)))); } catch { /* Storage can be disabled. */ }
+  };
 
   const commit = (patch: Partial<SearchState>, options?: { clear?: boolean }) => {
     const next: SearchState = options?.clear ? { ...defaultSearchState, ...patch } : { ...state, ...patch, selectedPlaceId: undefined };
@@ -96,9 +121,16 @@ export function DiscoveryBrowser({ places, cuisineOptions, canManage = false }: 
     const keyword = draftQuery.trim();
     commit({ query: keyword || undefined });
     setAmapError(""); setAmapSuggestions([]);
+    amapSearchController.current?.abort();
+    amapSearchController.current = null;
+    const currentRequest = ++amapRequestId.current;
+    setIsSearchingAmap(false);
     if (keyword.length < 2) return;
+    const controller = new AbortController();
+    amapSearchController.current = controller;
     setIsSearchingAmap(true);
-    const result = await searchAmapPoiTips(keyword);
+    const result = await searchAmapPoiTips(keyword, undefined, { signal: controller.signal });
+    if (currentRequest !== amapRequestId.current) return;
     setIsSearchingAmap(false);
     setAmapSuggestions(result.candidates);
     setAmapError(result.error ?? "");
@@ -148,12 +180,12 @@ export function DiscoveryBrowser({ places, cuisineOptions, canManage = false }: 
     {suggestions.length > 0 && <div className="search-suggestions" aria-label="站内搜索建议">{suggestions.map((suggestion) => <button key={`${suggestion.type}-${suggestion.id}`} type="button" onClick={() => { if (suggestion.type === "cuisine") selectCuisine(suggestion.id); else { setDraftQuery(suggestion.label); commit({ query: suggestion.label }); } }}>{suggestion.label}<small>{suggestion.description}</small></button>)}</div>}
 
     <div className="intent-actions" aria-label="寻找地点的方式" ref={intentActionsRef}>
-      <div className="intent-action"><button type="button" aria-expanded={openMenu === "location"} aria-controls="intent-menu-location" onClick={() => setOpenMenu(openMenu === "location" ? undefined : "location")}>按地点找</button>{openMenu === "location" && <div className="intent-menu intent-menu--grouped intent-menu--left" id="intent-menu-location"><section><b>行政区</b>{districts.map((district) => <button className={state.locationFilter?.id === district.adcode ? "is-selected" : ""} key={district.adcode} type="button" onClick={() => selectDistrict(district)}>{district.name}</button>)}{districtError && <small>{districtError}</small>}</section><section><b>商圈 / 地铁</b><small>搜索并选择一个地点；商圈按 3 公里、地铁按 1.5 公里筛选。</small></section></div>}</div>
+      <div className="intent-action"><button type="button" aria-expanded={openMenu === "location"} aria-controls="intent-menu-location" onClick={() => { const nextOpenMenu = openMenu === "location" ? undefined : "location"; if (nextOpenMenu === "location" && districts.length === 0) { setDistrictError(""); setDistrictLoaded(false); } setOpenMenu(nextOpenMenu); }}>按地点找</button>{openMenu === "location" && <div className="intent-menu intent-menu--grouped intent-menu--left" id="intent-menu-location"><section><b>行政区</b>{districtLoading && <small>正在加载行政区…</small>}{districts.map((district) => <button className={state.locationFilter?.id === district.adcode ? "is-selected" : ""} key={district.adcode} type="button" onClick={() => selectDistrict(district)}>{district.name}</button>)}{districtError && <small>{districtError}</small>}</section><section><b>商圈 / 地铁</b><small>搜索并选择一个地点；商圈按 3 公里、地铁按 1.5 公里筛选。</small></section></div>}</div>
       <div className="intent-action"><button type="button" aria-expanded={openMenu === "cuisine"} aria-controls="intent-menu-cuisine" onClick={() => setOpenMenu(openMenu === "cuisine" ? undefined : "cuisine")}>按菜系找</button>{openMenu === "cuisine" && <div className="intent-menu intent-menu--center" id="intent-menu-cuisine">{cuisineOptions.map(([slug, label]) => <button className={state.cuisineIds.includes(slug) ? "is-selected" : ""} key={slug} type="button" onClick={() => selectCuisine(slug, true)}>{label}</button>)}</div>}</div>
       <div className="intent-action"><button type="button" aria-expanded={openMenu === "inspiration"} aria-controls="intent-menu-inspiration" onClick={() => setOpenMenu(openMenu === "inspiration" ? undefined : "inspiration")}>找灵感</button>{openMenu === "inspiration" && <div className="intent-menu intent-menu--right" id="intent-menu-inspiration">{sceneTags.map(([slug, label]) => <button className={state.sceneTagIds.includes(slug) ? "is-selected" : ""} key={slug} type="button" onClick={() => selectScene(slug, true)}>{label}</button>)}</div>}</div>
     </div>
     {activeSearch && <section className="active-filter-panel" aria-label="筛选条件"><div className="active-filter-panel__controls"><select value={state.priceRange ?? ""} onChange={(event) => commit({ priceRange: event.target.value as SearchState["priceRange"] || undefined })} aria-label="人均"><option value="">全部人均</option>{priceOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={state.sort} onChange={(event) => { if (event.target.value === "distance") requestNearby(); else commit({ sort: event.target.value as SearchState["sort"] }); }} aria-label="结果排序"><option value="recommended">最值得去</option><option value="recent">最近体验</option><option value="distance">离我最近</option></select></div><div className="active-filter-panel__chips">{state.query && <button type="button" onClick={() => { setDraftQuery(""); commit({ query: undefined }); }}>搜索 · {state.query} ×</button>}{state.locationFilter && <button className={`location-tag location-tag--${state.locationFilter.kind}`} type="button" onClick={() => commit({ locationFilter: undefined })}>{locationKindLabel(state.locationFilter.kind)} · {state.locationFilter.name} ×</button>}{state.cuisineIds.map((id) => <button key={id} type="button" onClick={() => selectCuisine(id)}>{cuisineLabelBySlug[id] ?? id} ×</button>)}{state.sceneTagIds.map((id) => <button key={id} type="button" onClick={() => selectScene(id)}>{sceneTagLabels[id] ?? id} ×</button>)}</div><div className="result-heading"><strong>{state.query ? `“${state.query}”找到 ${filteredPlaces.length} 个地点` : `朋友推荐了 ${filteredPlaces.length} 个地点`}</strong><button className="text-button" type="button" onClick={clearAll}>清除筛选</button></div>{locationMessage && <p className="location-note">{locationMessage}</p>}</section>}
 
-    {mode === "map" ? <section className="v1-static-map" aria-label="发现地点的地图视图"><StaticMapAdapter pins={filteredPlaces} selectedPlaceId={state.selectedPlaceId} onError={reportMapError} /><div><strong>朋友推荐了 {filteredPlaces.length} 个地点</strong><button type="button" onClick={() => switchView("list")}>查看列表</button></div>{mapError && <p className="map-status-message">{mapError}</p>}</section> : <section className="home-results">{!activeSearch && <div className="home-results__intro"><p className="eyebrow">朋友最近吃过</p><h2>朋友最近吃过的地方</h2></div>}{(activeSearch ? filteredPlaces : recentPlaces).length ? <ul className="home-place-list">{(activeSearch ? filteredPlaces : recentPlaces).map((place) => <li key={place.id}><DiscoveryPlaceCard canManage={canManage} place={place} href={detailHref(place.id)} cuisineLabel={place.cuisineSlugs?.map((slug) => cuisineLabelBySlug[slug]).filter(Boolean)[0]} categoryLabel={categoryLabels[place.category] || "餐饮"} nearbyLabel={state.locationFilter?.kind === "metro_station" ? state.locationFilter.name : undefined} /></li>)}</ul> : <div className="empty-state"><strong>{places.length ? "没有符合条件的地点" : "共同地图里还没有地点"}</strong><span>{places.length ? "可以换个条件再试试。" : "先记下一家去过的地方。"}</span>{places.length ? <button className="text-button" type="button" onClick={clearAll}>清除筛选</button> : <Link className="primary-link" href="/mark">记下第一家</Link>}</div>}</section>}
+    {mode === "map" ? <section className="v1-static-map" aria-label="发现地点的地图视图"><StaticMapAdapter pins={filteredPlaces} selectedPlaceId={state.selectedPlaceId} onError={reportMapError} /><div><strong>朋友推荐了 {filteredPlaces.length} 个地点</strong><button type="button" onClick={() => switchView("list")}>查看列表</button></div>{mapError && <p className="map-status-message">{mapError}</p>}</section> : <section className="home-results">{!activeSearch && <div className="home-results__intro"><p className="eyebrow">朋友最近吃过</p><h2>朋友最近吃过的地方</h2></div>}{(activeSearch ? filteredPlaces : recentPlaces).length ? <ul className="home-place-list">{(activeSearch ? filteredPlaces : recentPlaces).map((place, index) => <li key={place.id}><DiscoveryPlaceCard isFirst={index === 0} canManage={canManage} place={place} href={detailHref(place.id)} onNavigate={rememberScrollPosition} cuisineLabel={place.cuisineSlugs?.map((slug) => cuisineLabelBySlug[slug]).filter(Boolean)[0]} categoryLabel={categoryLabels[place.category] || "餐饮"} nearbyLabel={state.locationFilter?.kind === "metro_station" ? state.locationFilter.name : undefined} /></li>)}</ul> : <div className="empty-state"><strong>{places.length ? "没有符合条件的地点" : "共同地图里还没有地点"}</strong><span>{places.length ? "可以换个条件再试试。" : "先记下一家去过的地方。"}</span>{places.length ? <button className="text-button" type="button" onClick={clearAll}>清除筛选</button> : <Link className="primary-link" href="/mark">记下第一家</Link>}</div>}</section>}
   </section>;
 }

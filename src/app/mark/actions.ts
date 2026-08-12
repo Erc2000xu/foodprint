@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getActiveGroupContext } from "@/lib/auth/active-group-context";
 import { cuisineOptions } from "@/lib/discovery-options";
+import { isValidWebpFile, readWebpMetadata, type WebpMetadata } from "@/lib/photos/webp-metadata";
 import { createClient } from "@/lib/supabase/server";
 import { userFacingError } from "@/lib/user-facing-error";
 
 export type PoiLookup = { error?: string; found?: boolean };
-export type MarkResult = { error?: string; success?: string };
+export type MarkResult = { error?: string; success?: string; warning?: string };
 export type VisitResult = { error?: string; success?: string; warning?: string };
 
 const cuisineSlugs = cuisineOptions.map(([slug]) => slug) as [string, ...string[]];
@@ -28,11 +30,150 @@ function validationMessage(issues: ReadonlyArray<{ path: readonly unknown[]; cod
 
 async function getActiveGroupId() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { supabase, error: "请先登录后再继续。" as const };
-  const { data: memberships } = await supabase.from("group_members").select("group_id").eq("user_id", user.id).eq("status", "active").limit(1);
-  const groupId = memberships?.[0]?.group_id;
-  return groupId ? { supabase, groupId, userId: user.id } : { supabase, error: "你还没有加入共同地图。" as const };
+  const context = await getActiveGroupContext(supabase, "/mark");
+  return context ? { supabase, ...context } : { supabase, error: "请先登录并加入共同地图。" as const };
+}
+
+type PhotoPair = {
+  display: File;
+  thumbnail: File;
+  displayMetadata: WebpMetadata;
+  thumbnailMetadata: WebpMetadata;
+};
+
+async function parsePhotoPairs(formData: FormData): Promise<{ pairs?: PhotoPair[]; error?: string }> {
+  const displays = formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0);
+  const thumbnails = formData.getAll("photo_thumbnails").filter((item): item is File => item instanceof File && item.size > 0);
+  if (displays.length === 0 && thumbnails.length === 0) return { pairs: [] };
+  if (displays.length > 9 || thumbnails.length > 9) return { error: "单次最多上传 9 张照片。" };
+  if (displays.length !== thumbnails.length) return { error: "照片展示图与缩略图数量不一致，请重新选择。" };
+  const totalBytes = [...displays, ...thumbnails].reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > 16 * 1024 * 1024) return { error: "单次照片总大小不能超过 16MB。" };
+
+  const pairs: PhotoPair[] = [];
+  for (let index = 0; index < displays.length; index += 1) {
+    const display = displays[index];
+    const thumbnail = thumbnails[index];
+    const [displayMetadata, thumbnailMetadata] = await Promise.all([
+      readWebpMetadata(await display.arrayBuffer()),
+      readWebpMetadata(await thumbnail.arrayBuffer()),
+    ]);
+    if (display.type !== "image/webp" || thumbnail.type !== "image/webp") return { error: `第 ${index + 1} 张照片不是 WebP 格式。` };
+    if (!isValidWebpFile(display, displayMetadata, { maxEdge: 1_280, maxBytes: 600 * 1024 }) || !displayMetadata) {
+      return { error: `第 ${index + 1} 张展示图不符合 1280px / 600KiB 限制。` };
+    }
+    if (!isValidWebpFile(thumbnail, thumbnailMetadata, { maxEdge: 640, maxBytes: 120 * 1024 }) || !thumbnailMetadata) {
+      return { error: `第 ${index + 1} 张缩略图不符合 640px / 120KiB 限制。` };
+    }
+    pairs.push({ display, thumbnail, displayMetadata, thumbnailMetadata });
+  }
+  return { pairs };
+}
+
+type PhotoUploadInput = {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  groupId: string;
+  userId: string;
+  groupPlaceId: string;
+  visitRecordId: string;
+  sortOrder: number;
+  pair: PhotoPair;
+};
+
+async function stablePhotoId(input: PhotoUploadInput) {
+  const displayBytes = new Uint8Array(await input.pair.display.arrayBuffer());
+  const thumbnailBytes = new Uint8Array(await input.pair.thumbnail.arrayBuffer());
+  const prefix = new TextEncoder().encode(`${input.groupId}:${input.userId}:${input.visitRecordId}:${input.sortOrder}:`);
+  const seed = new Uint8Array(prefix.length + displayBytes.length + thumbnailBytes.length);
+  seed.set(prefix);
+  seed.set(displayBytes, prefix.length);
+  seed.set(thumbnailBytes, prefix.length + displayBytes.length);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", seed));
+  digest[6] = (digest[6] & 0x0f) | 0x50;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+  const hex = [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+async function uploadPhotoPair(input: PhotoUploadInput): Promise<{ warning?: string }> {
+  const photoId = await stablePhotoId(input);
+  const base = `groups/${input.groupId}/users/${input.userId}/visits/${input.visitRecordId}/photos/${photoId}`;
+  const displayKey = `${base}/display.webp`;
+  const thumbnailKey = `${base}/thumb.webp`;
+  const uploadedKeys: string[] = [];
+  const storage = input.supabase.storage.from("place-photos");
+  const { data: existingPhoto } = await input.supabase.from("photos").select("id, object_key, thumbnail_object_key").eq("id", photoId).maybeSingle();
+  if (existingPhoto) {
+    if (existingPhoto.object_key !== displayKey) return { warning: `第 ${input.sortOrder + 1} 张照片幂等校验失败，请稍后重试。` };
+    if (existingPhoto.thumbnail_object_key === thumbnailKey) return {};
+    if (!existingPhoto.thumbnail_object_key) {
+      const thumbnailUpload = await storage.upload(thumbnailKey, input.pair.thumbnail, { contentType: "image/webp", upsert: false });
+      if (thumbnailUpload.error && !/already exists|duplicate/i.test(thumbnailUpload.error.message)) return { warning: `第 ${input.sortOrder + 1} 张照片已保存，但缩略图待补齐。` };
+      const { error: registerError } = await input.supabase.rpc("register_photo_thumbnail", {
+        p_photo_id: photoId,
+        p_thumbnail_object_key: thumbnailKey,
+        p_thumbnail_width: input.pair.thumbnailMetadata.width,
+        p_thumbnail_height: input.pair.thumbnailMetadata.height,
+        p_thumbnail_size_bytes: input.pair.thumbnail.size,
+      });
+      if (registerError) {
+        await storage.remove([thumbnailKey]);
+        return { warning: `第 ${input.sortOrder + 1} 张照片已保存，但缩略图待补齐。` };
+      }
+      return {};
+    }
+  }
+  const displayUpload = await storage.upload(displayKey, input.pair.display, { contentType: "image/webp", upsert: false });
+  if (displayUpload.error) {
+    await storage.remove([displayKey, thumbnailKey]);
+    return { warning: `第 ${input.sortOrder + 1} 张展示图上传失败，请稍后重试。` };
+  }
+  uploadedKeys.push(displayKey);
+
+  const thumbnailUpload = await storage.upload(thumbnailKey, input.pair.thumbnail, { contentType: "image/webp", upsert: false });
+  const hasThumbnail = !thumbnailUpload.error;
+  if (hasThumbnail) uploadedKeys.push(thumbnailKey);
+  else await storage.remove([thumbnailKey]);
+  const { error: photoError } = await input.supabase.from("photos").insert({
+    id: photoId,
+    group_id: input.groupId,
+    group_place_id: input.groupPlaceId,
+    user_id: input.userId,
+    visit_record_id: input.visitRecordId,
+    storage_provider: "supabase",
+    object_key: displayKey,
+    width: input.pair.displayMetadata.width,
+    height: input.pair.displayMetadata.height,
+    size_bytes: input.pair.display.size,
+    sort_order: input.sortOrder,
+    thumbnail_object_key: hasThumbnail ? thumbnailKey : null,
+    thumbnail_width: hasThumbnail ? input.pair.thumbnailMetadata.width : null,
+    thumbnail_height: hasThumbnail ? input.pair.thumbnailMetadata.height : null,
+    thumbnail_size_bytes: hasThumbnail ? input.pair.thumbnail.size : null,
+    thumbnail_generated_at: hasThumbnail ? new Date().toISOString() : null,
+  });
+  if (photoError && photoError.code === "23505") return {};
+  if (photoError) {
+    await storage.remove([...new Set([...uploadedKeys, thumbnailKey])]);
+    return { warning: `第 ${input.sortOrder + 1} 张照片登记失败，请稍后重试。` };
+  }
+  return thumbnailUpload.error ? { warning: `第 ${input.sortOrder + 1} 张照片已保存，但缩略图生成失败；稍后可补齐。` } : {};
+}
+
+async function uploadPhotoPairs(input: Omit<PhotoUploadInput, "sortOrder" | "pair"> & { pairs: PhotoPair[] }) {
+  const warnings: string[] = [];
+  // Keep at most two pair uploads in flight; each pair is independently cleanable.
+  let cursor = 0;
+  async function worker() {
+    while (cursor < input.pairs.length) {
+      const sortOrder = cursor;
+      cursor += 1;
+      const result = await uploadPhotoPair({ ...input, sortOrder, pair: input.pairs[sortOrder] });
+      if (result.warning) warnings.push(result.warning);
+    }
+  }
+  await Promise.all([worker(), worker()]);
+  return warnings;
 }
 
 export async function lookupAmapPoi(poiId: string): Promise<PoiLookup> {
@@ -60,10 +201,9 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
   }).safeParse({ ...Object.fromEntries(formData), opinion_tags: formData.getAll("opinion_tags") });
   if (!fields.success) return { error: validationMessage(fields.error.issues, "请检查填写内容。") };
   const value = fields.data;
-  const photos = formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0);
-  const photoDimensions = formData.getAll("photo_dimensions").map((item) => typeof item === "string" ? /^([1-9]\d{0,4})x([1-9]\d{0,4})$/.exec(item) : null);
-  if (photos.length > 9) return { error: "单次最多上传 9 张照片。" };
-  if (photos.some((photo) => photo.type !== "image/webp" || photo.size > 1_572_864)) return { error: "照片需要是 1.5MB 以内的 WebP 图片。" };
+  const parsedPhotos = await parsePhotoPairs(formData);
+  if (parsedPhotos.error || !parsedPhotos.pairs) return { error: parsedPhotos.error ?? "照片信息无效。" };
+  const photos = parsedPhotos.pairs;
   const items = (value.dishes ?? "").split(/[,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 12);
   const { data, error } = await activeGroup.supabase.rpc("save_candidate_promotion_mark", {
     p_group_id: activeGroup.groupId, p_source_provider: "amap", p_source_poi_id: value.poi_id, p_name: value.name, p_branch_name: value.branch_name ?? null,
@@ -80,33 +220,20 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     if (countError) return { error: "这一顿已记下，但照片数量暂时无法确认；请稍后再试。" };
     if ((count ?? 0) + photos.length > 9) return { error: `这顿饭已保存；该条记录已有 ${count ?? 0} 张照片，最多保留 9 张。` };
   }
-  for (const [sortOrder, photo] of photos.entries()) {
-    const dimensions = photoDimensions[sortOrder];
-    const width = dimensions ? Number(dimensions[1]) : null;
-    const height = dimensions ? Number(dimensions[2]) : null;
-    const objectKey = `groups/${activeGroup.groupId}/users/${activeGroup.userId}/visits/${visitRecordId}/${crypto.randomUUID()}.webp`;
-    const { error: uploadError } = await activeGroup.supabase.storage.from("place-photos").upload(objectKey, photo, { contentType: "image/webp", upsert: false });
-    if (uploadError) return { error: `这一顿已记下，但第 ${sortOrder + 1} 张照片上传失败；请稍后再试。` };
-    const { error: photoError } = await activeGroup.supabase.from("photos").insert({
-      group_id: activeGroup.groupId, group_place_id: data[0].group_place_id, user_id: activeGroup.userId,
-      visit_record_id: visitRecordId, storage_provider: "supabase", object_key: objectKey, width, height, size_bytes: photo.size, sort_order: sortOrder,
-    });
-    if (photoError) {
-      await activeGroup.supabase.storage.from("place-photos").remove([objectKey]);
-      return { error: `这一顿已记下，但第 ${sortOrder + 1} 张照片登记失败；请稍后再试。` };
-    }
-  }
+  const warnings = photos.length ? await uploadPhotoPairs({
+    supabase: activeGroup.supabase,
+    groupId: activeGroup.groupId,
+    userId: activeGroup.userId,
+    groupPlaceId: data[0].group_place_id,
+    visitRecordId,
+    pairs: photos,
+  }) : [];
   const { error: discoveryError } = await activeGroup.supabase.rpc("refresh_group_place_discovery_metadata", { p_group_place_id: data[0].group_place_id });
   if (discoveryError) return { error: "这一顿已记下，但地点信息正在整理，请稍后再查看。" };
-  // Best-effort, provider-owned display cache. A failed lookup must never roll
-  // back a valid meal record; the throttled discovery backfill will retry it.
-  await activeGroup.supabase.functions.invoke("amap-poi-search", {
-    body: { operation: "business_area_backfill", groupPlaceId: data[0].group_place_id },
-  }).catch(() => undefined);
   revalidatePath("/");
   revalidatePath("/try");
   revalidatePath(`/place/${data[0].group_place_id}`);
-    return { success: "这一顿已记下，地点已加入共同地图。" };
+    return { success: "这一顿已记下，地点已加入共同地图。", warning: warnings.length ? warnings.join(" ") : undefined };
   } catch (error) {
     console.error("savePlaceMark failed", error);
     return { error: "保存失败，请检查网络后重试。" };
@@ -128,12 +255,14 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
   if (!fields.success) return { error: validationMessage(fields.error.issues, "请检查这顿饭的内容。") };
 
   const value = fields.data;
-  const photos = formData.getAll("photos").filter((item): item is File => item instanceof File && item.size > 0);
-  const photoDimensions = formData.getAll("photo_dimensions").map((item) => typeof item === "string" ? /^([1-9]\d{0,4})x([1-9]\d{0,4})$/.exec(item) : null);
-  if (photos.length > 9) return { error: "单次最多上传 9 张照片。" };
-  if (photos.some((photo) => photo.type !== "image/webp" || photo.size > 1_572_864)) return { error: "照片需要是 1.5MB 以内的 WebP 图片。" };
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("record_place_visit", {
+  const parsedPhotos = await parsePhotoPairs(formData);
+  if (parsedPhotos.error || !parsedPhotos.pairs) return { error: parsedPhotos.error ?? "照片信息无效。" };
+  const photos = parsedPhotos.pairs;
+  const activeGroup = await getActiveGroupId();
+  if ("error" in activeGroup) return { error: activeGroup.error };
+  const { data: groupPlace } = await activeGroup.supabase.from("group_places").select("id").eq("id", value.group_place_id).eq("group_id", activeGroup.groupId).neq("status", "archived").maybeSingle();
+  if (!groupPlace) return { error: "地点不存在，或你没有共同地图权限。" };
+  const { data, error } = await activeGroup.supabase.rpc("record_place_visit", {
     p_group_place_id: value.group_place_id,
     p_visited_on: value.visited_on,
     p_opinion_changed: value.opinion_changed === "true",
@@ -146,33 +275,18 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
   if (error || !data?.[0]?.visit_record_id) return { error: error ? userFacingError(error) : "操作没有完成，请再试一次。" };
   const visitRecordId = data[0].visit_record_id as string;
   if (photos.length) {
-    const [{ data: groupPlace }, { data: { user } }] = await Promise.all([
-      supabase.from("group_places").select("group_id").eq("id", value.group_place_id).maybeSingle(),
-      supabase.auth.getUser(),
-    ]);
-    if (!groupPlace || !user) return { success: "这顿饭已记下，地点时间线也更新了。", warning: "照片暂未上传：无法确认上传权限。" };
-    for (const [sortOrder, photo] of photos.entries()) {
-      const dimensions = photoDimensions[sortOrder];
-      const objectKey = `groups/${groupPlace.group_id}/users/${user.id}/visits/${visitRecordId}/${crypto.randomUUID()}.webp`;
-      const { error: uploadError } = await supabase.storage.from("place-photos").upload(objectKey, photo, { contentType: "image/webp", upsert: false });
-      if (uploadError) return { success: "这顿饭已记下，地点时间线也更新了。", warning: `第 ${sortOrder + 1} 张照片未上传，请稍后再试。` };
-      const { error: photoError } = await supabase.from("photos").insert({
-        group_id: groupPlace.group_id,
-        group_place_id: value.group_place_id,
-        user_id: user.id,
-        visit_record_id: visitRecordId,
-        storage_provider: "supabase",
-        object_key: objectKey,
-        width: dimensions ? Number(dimensions[1]) : null,
-        height: dimensions ? Number(dimensions[2]) : null,
-        size_bytes: photo.size,
-        sort_order: sortOrder,
-      });
-      if (photoError) {
-        await supabase.storage.from("place-photos").remove([objectKey]);
-        return { success: "这顿饭已记下，地点时间线也更新了。", warning: `第 ${sortOrder + 1} 张照片未登记，请稍后再试。` };
-      }
-    }
+    const warnings = await uploadPhotoPairs({
+      supabase: activeGroup.supabase,
+      groupId: activeGroup.groupId,
+      userId: activeGroup.userId,
+      groupPlaceId: value.group_place_id,
+      visitRecordId,
+      pairs: photos,
+    });
+    revalidatePath("/");
+    revalidatePath("/activity");
+    revalidatePath(`/place/${value.group_place_id}`);
+    return { success: "这顿饭已记下，地点时间线也更新了。", warning: warnings.length ? warnings.join(" ") : undefined };
   }
   revalidatePath("/");
   revalidatePath("/activity");

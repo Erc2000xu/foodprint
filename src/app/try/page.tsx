@@ -1,19 +1,19 @@
 import { redirect } from "next/navigation";
+import { ContentReadyMarker } from "@/components/navigation/content-ready-marker";
 import { AppShell } from "@/components/shell/app-shell";
 import { TryList } from "@/components/try/try-list";
+import { getActiveGroupContext } from "@/lib/auth/active-group-context";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function TryPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/try");
-  const { data: memberships } = await supabase.from("group_members").select("group_id, role").eq("user_id", user.id).eq("status", "active").limit(1);
-  const groupId = memberships?.[0]?.group_id;
-  if (!groupId) redirect("/admin");
-  const { data: group } = await supabase.from("groups").select("name").eq("id", groupId).maybeSingle();
+  const context = await getActiveGroupContext(supabase, "/try");
+  if (!context) redirect("/login?next=/try");
+  const user = { id: context.userId };
+  const groupId = context.groupId;
   const { data: candidates } = await supabase.from("place_candidates")
     .select("id, place_id, heard_from, expectation, created_by, created_at")
-    .eq("group_id", groupId).eq("status", "pending").order("created_at", { ascending: false });
+    .eq("group_id", groupId).eq("status", "pending").order("created_at", { ascending: false }).limit(30);
   const placeIds = candidates?.map((candidate) => candidate.place_id) ?? [];
   const creatorIds = [...new Set((candidates ?? []).map((candidate) => candidate.created_by))];
   const [{ data: places }, { data: profiles }, { data: businessAreas }] = await Promise.all([
@@ -30,8 +30,8 @@ export default async function TryPage() {
     return [{
       id: candidate.id, name: place.name, address: place.address ?? "", city: place.city ?? "", district: place.district ?? "", businessArea: businessAreaByPlaceId.get(place.id) ?? "", poiId: place.source_poi_id ?? "", latitude: Number(place.latitude), longitude: Number(place.longitude),
       heardFrom: candidate.heard_from ?? "", expectation: candidate.expectation ?? "", creatorName: profileById.get(candidate.created_by)?.display_name ?? "成员",
-      isMine: candidate.created_by === user.id, canManage: ["owner", "admin"].includes(memberships?.[0]?.role ?? ""),
+      isMine: candidate.created_by === user.id, canManage: ["owner", "admin"].includes(context.role),
     }];
   });
-  return <AppShell activeNav="去试试" groupName={group?.name}><TryList candidates={cards} /></AppShell>;
+  return <AppShell activeNav="去试试" groupName={context.groupName}><TryList candidates={cards} /><ContentReadyMarker route="/try" /></AppShell>;
 }

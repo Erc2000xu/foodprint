@@ -1,0 +1,16 @@
+[Unit]
+Description=Foodprint production application container
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/foodprint/current
+EnvironmentFile=-/opt/foodprint/current/.deployment.env
+ExecStart=/usr/bin/docker compose --project-name foodprint --file /opt/foodprint/current/deploy/compose.production.yml up --detach --remove-orphans
+ExecStop=/usr/bin/docker compose --project-name foodprint --file /opt/foodprint/current/deploy/compose.production.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

@@ -10,6 +10,20 @@ export type InviteResult = { error?: string; inviteUrl?: string };
 export type ManagementResult = { error?: string; success?: string };
 export type PlaceManagementResult = ManagementResult;
 
+export async function runBusinessAreaBackfill(previousState: ManagementResult): Promise<ManagementResult> {
+  void previousState;
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "请先登录后再继续。" };
+  const { data: membership } = await supabase.from("group_members").select("role").eq("user_id", user.id).eq("status", "active").eq("role", "owner").limit(1).maybeSingle();
+  if (!membership) return { error: "只有 Owner 可以整理地点商圈信息。" };
+  const { data, error } = await supabase.functions.invoke("amap-poi-search", { body: { operation: "business_area_backfill" } });
+  if (error) return { error: userFacingError(error, "商圈整理暂时无法完成。") };
+  revalidatePath("/");
+  revalidatePath("/admin");
+  return { success: `已处理 ${Number((data as { processed?: number } | null)?.processed ?? 0)} 个待补充地点。` };
+}
+
 export async function archiveGroupPlace(_: PlaceManagementResult, formData: FormData): Promise<PlaceManagementResult> {
   const groupPlaceId = z.string().uuid().safeParse(formData.get("group_place_id"));
   const reason = z.string().trim().min(1).max(280).safeParse(formData.get("reason"));

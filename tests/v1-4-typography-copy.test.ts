@@ -13,7 +13,7 @@ describe("V1.4 typography and copy contract", () => {
     expect(statSync(resolve(root, "public/fonts/zcool-xiaowei-v15-subset.woff2")).size).toBeGreaterThan(1_000);
     expect(css).toContain("--font-ui");
     expect(css).toContain("--font-display");
-    expect(css).toContain("/fonts/source-han-sans-sc-v2.005.woff2");
+    expect(css).toContain("/fonts/source-han-sans-sc-ui-v2-2.woff2");
     expect(css).toContain("/fonts/zcool-xiaowei-v15-subset.woff2");
   });
 

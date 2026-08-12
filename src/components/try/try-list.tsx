@@ -108,6 +108,7 @@ export function TryList({ candidates }: { candidates: CandidateCard[] }) {
   const [userLocation, setUserLocation] = useState<UserLocation>();
   const [locationState, setLocationState] = useState("");
   const requestId = useRef(0);
+  const searchController = useRef<AbortController | null>(null);
   const [state, action, pending] = useActionState(async (previous: CandidateResult, formData: FormData) => {
     const result = await createPlaceCandidate(previous, formData);
     if (result.success) {
@@ -121,12 +122,17 @@ export function TryList({ candidates }: { candidates: CandidateCard[] }) {
   useEffect(() => {
     if (keyword.trim().length < 2 || selected) {
       requestId.current += 1;
+      searchController.current?.abort();
+      searchController.current = null;
       return;
     }
     const timer = window.setTimeout(() => {
       const currentRequest = ++requestId.current;
+      searchController.current?.abort();
+      const controller = new AbortController();
+      searchController.current = controller;
       setSearching(true);
-      void searchAmapPoiTips(keyword.trim(), userLocation).then(({ candidates: found, error }) => {
+      void searchAmapPoiTips(keyword.trim(), userLocation, { signal: controller.signal }).then(({ candidates: found, error }) => {
         if (currentRequest !== requestId.current) return;
         setResults(sortByDistance(found, userLocation));
         setSearchError(error ?? "");
@@ -140,7 +146,7 @@ export function TryList({ candidates }: { candidates: CandidateCard[] }) {
         setSearching(false);
       });
     }, 420);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); searchController.current?.abort(); };
   }, [keyword, selected, userLocation]);
 
   const requestLocationSort = () => {
@@ -160,8 +166,8 @@ export function TryList({ candidates }: { candidates: CandidateCard[] }) {
     <p className="try-intro">想去的地方先记在这里。亲自吃过并愿意推荐后，才会出现在发现；不推荐的选择不会公开。</p>
     <section className="try-add-card">
       <div className="try-add-card__icon" aria-hidden="true">＋</div><div><strong>加入想去的地方</strong><p>从搜索结果中选择一家；听谁提过、为什么想去，都可以稍后补充。</p></div>
-      {!selected ? <div className="try-search"><label>搜索想去的地方<input value={keyword} onChange={(event) => { setKeyword(event.target.value); setResults([]); setSearchError(""); setHasSearched(false); }} placeholder="输入店名、咖啡馆或酒吧名称" /></label><div className="location-sort"><button type="button" className="text-button" onClick={requestLocationSort}>{userLocation ? "已按当前位置排序" : "按当前位置找"}</button>{locationState && <span>{locationState}</span>}</div>{searching && <p className="search-state">正在搜索…</p>}{searchError && <p className="form-error">{searchError}</p>}<ul className="poi-results">{results.map((candidate) => <li key={candidate.poiId}><button type="button" onClick={() => { setSelected(candidate); setResults([]); }}><strong>{candidate.name}</strong><span>{candidate.address || `${candidate.city} ${candidate.district}`}</span><div className="poi-result-tags">{candidate.city && <em className="city-tag city-tag--teal">{candidate.city}</em>}{candidate.distanceMeters !== undefined && <em className="distance-tag">{formatDistance(candidate.distanceMeters)}</em>}</div></button></li>)}</ul>{hasSearched && !searching && !searchError && !results.length && <p className="search-state">暂时没有找到这家。可以换个关键词再试试。</p>}</div> : <form className="try-form" action={action}>
-        <button className="back-button" type="button" onClick={() => { setSelected(undefined); setKeyword(""); }}>← 重新搜索</button>
+      {!selected ? <div className="try-search"><label>搜索想去的地方<input value={keyword} onChange={(event) => { setKeyword(event.target.value); setResults([]); setSearching(false); setSearchError(""); setHasSearched(false); }} placeholder="输入店名、咖啡馆或酒吧名称" /></label><div className="location-sort"><button type="button" className="text-button" onClick={requestLocationSort}>{userLocation ? "已按当前位置排序" : "按当前位置找"}</button>{locationState && <span>{locationState}</span>}</div>{searching && <p className="search-state">正在搜索…</p>}{searchError && <p className="form-error">{searchError}</p>}<ul className="poi-results">{results.map((candidate) => <li key={candidate.poiId}><button type="button" onClick={() => { setSearching(false); setSelected(candidate); setResults([]); }}><strong>{candidate.name}</strong><span>{candidate.address || `${candidate.city} ${candidate.district}`}</span><div className="poi-result-tags">{candidate.city && <em className="city-tag city-tag--teal">{candidate.city}</em>}{candidate.distanceMeters !== undefined && <em className="distance-tag">{formatDistance(candidate.distanceMeters)}</em>}</div></button></li>)}</ul>{hasSearched && !searching && !searchError && !results.length && <p className="search-state">暂时没有找到这家。可以换个关键词再试试。</p>}</div> : <form className="try-form" action={action}>
+        <button className="back-button" type="button" onClick={() => { setSearching(false); setSelected(undefined); setKeyword(""); }}>← 重新搜索</button>
         <strong>{selected.name}</strong><p>{selected.address || `${selected.city} ${selected.district}`}</p>
         <input type="hidden" name="poi_id" value={selected.poiId} /><input type="hidden" name="name" value={selected.name} /><input type="hidden" name="address" value={selected.address} /><input type="hidden" name="city" value={selected.city} /><input type="hidden" name="district" value={selected.district} /><input type="hidden" name="latitude" value={selected.latitude} /><input type="hidden" name="longitude" value={selected.longitude} />
         <label>从哪里听说的（可选）<input name="heard_from" maxLength={120} placeholder="朋友提过、路过看到、在别处读到…" /></label>
