@@ -1,6 +1,6 @@
 # 食迹 Foodprint｜免费版单生产环境与应用发布 SOP
 
-> 状态：已确认采用方案 B；V2-A 应用已运行在腾讯云，腾讯云自动发布仍待实现
+> 状态：已确认采用方案 B；V2-A 应用已运行在腾讯云，历史 migration 对账已于 2026-08-03 完成；腾讯云自动发布仍待实现
 > 生效范围：任何需要进入 GitHub 的代码、测试、migration、Edge Function 或正式开发文档
 > 关联决策：[免费版单生产环境发布管道](decisions/2026-08-03-free-tier-release-pipeline.md)
 
@@ -119,7 +119,8 @@ Vercel 不再是 V2-A 正式运行时。稳定期内保留旧 Production 部署�
 
 项目负责人只在浏览器完成账户与密钥操作；Codex 负责生成、核对和验证，但不索取任何 secret：
 
-1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。若本地有、远端 history 没有的旧版本，先运行 Verify legacy migration state；它只导出 public schema 到临时 runner 并核对旧迁移留下的对象，绝不写入数据、schema 或 history。只有两项审计都通过后，才可逐条批准 repair 为 applied，不重放 SQL。
+1. 历史 migration 对账已完成，证据与当前状态见 [发布与迁移 SOP 收束交接](FOODPRINT_RELEASE_SOP_HANDOFF_2026-08-03.md)。一次性 Verify、Reconcile 与 Repair 工作流已从仓库移除，今后不得重建、重跑或通过 SQL Editor 回放旧 migration。
+   - 如未来出现本地与远端 history 不一致，先停止发布，运行只读 **Audit production migration history**，逐项核对实际对象，并以新的、明确审阅过的向前修复方案处理；不得使用 `--include-all`、reset 或盲目 repair。
 2. 在 GitHub Repository Actions secrets 添加 Supabase 生产凭据，以及腾讯云发布 workflow 所需的受控凭据；名称以最终 workflow 为准，不要发送给 Codex。
 3. 核对 Vercel 旧 Production 部署可回滚，并核对 Production 环境变量。
 4. 在 Supabase 配置 production Edge Function secrets 与 Origin 白名单。
