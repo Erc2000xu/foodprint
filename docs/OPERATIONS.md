@@ -36,6 +36,20 @@ GitHub 是代码与发布历史的唯一事实来源。代码、migration 和 Ed
 - PWA service worker 只缓存公开的应用壳、图标和静态 bundle；不会缓存 API、签名照片 URL、地图或 POI 搜索结果。
 - 本机 Docker Desktop 不可用不会阻断发布：migration 完整重放由 GitHub CI runner 执行。当前不依赖额外的 Free staging 项目，也不把 production 用作临时测试库。
 
+## V2.1 性能基线与日志
+
+- 本地公开入口基线使用 `PERFORMANCE_BASE_URL=... PERFORMANCE_SAMPLES=5 npm run perf:baseline`；脚本只访问 `/launch`、`/login`、`/offline`、manifest、Service Worker 和 `/api/health`，不发送 Cookie、Authorization、查询串或用户数据。
+- Next.js 日志中的 `foodprint.performance` 记录脱敏路由、耗时、结果类别和数量；浏览器通过 `/api/metrics` 上报 Web Vitals、导航 pending、PWA 和 Service Worker 事件，不记录用户身份、搜索词、坐标、照片 URL 或 token。
+- Nginx access log 继续不写查询串、Cookie、Authorization、referer 或请求体；V2.1 新增 `$request_time`、`$upstream_response_time` 和 `$upstream_status`，并分开评估页面、API 与认证限速。
+- 修改 `deploy/nginx/` 后先执行 `nginx -t`，再重载 Nginx、检查 `/api/health`，并用真实设备记录 p50/p75/p95。应用异常按发布 SOP 回退镜像；Service Worker 更新需先保证旧/修复版本可接管，不能用 `Clear-Site-Data` 清除会话。
+
+## V2.2 启动、导航与私有缩略图
+
+- `npm run perf:resources` 检查 UI 字体子集不超过 300KiB、CSS 未重新引用全量思源黑体；`npm run fonts:subset` 只在受控构建环境生成子集。
+- `npm run photos:backfill` 默认只做 dry-run；执行模式只在 `.env.local` 或受控生产环境读取 service role，按 `photos.id` 每批 20、最多两组并发，失败率超过 1% 自动停止。日志只输出计数和脱敏阶段，不输出密钥、签名 URL 或完整 object key。
+- `npm run photos:audit` 只报告 DB/Storage 缩略图孤儿或缺失对象，不自动删除；任何清理操作需另行批准并走发布 SOP。
+- V2.2 migration 是附加 migration，不能改写或 squash 历史 migration。正式发布前必须在干净数据库重放、完成跨组/RLS 回归，并在生产 Docker 目标架构验证 `sharp` 后再执行旧图回填。
+
 ## V1 检索数据上线顺序
 
 1. 先在本机或 GitHub CI 的干净 Supabase 数据库中依序重放 `20260724100000_v1_discovery_taxonomy.sql` 和 `20260724103000_v1_discovery_completion.sql`。

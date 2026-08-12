@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { SiteComplianceFooter } from "@/components/compliance/site-compliance-footer";
+import { PerformanceObserver } from "@/components/performance/performance-observer";
 import { PwaRegister } from "@/components/pwa/pwa-register";
+import { NavigationCoordinator } from "@/components/navigation/navigation-coordinator";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -28,8 +30,9 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body>
-        {children}
+        <NavigationCoordinator>{children}</NavigationCoordinator>
         <SiteComplianceFooter />
+        <PerformanceObserver />
         <PwaRegister buildId={deploymentVersion} />
       </body>
     </html>

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Image from "next/image";
-import Link from "next/link";
+import { PendingNavigationLink } from "@/components/shell/pending-navigation-link";
+import { AppShellMetrics } from "@/components/performance/app-shell-metrics";
 
 const navigation = [
   { label: "发现", icon: "/nav-icons/discover.png", href: "/" },
@@ -14,11 +15,12 @@ export function AppShell({ children, activeNav = "发现", groupName }: { childr
   const displayedGroupName = groupName?.trim() || "共同地图";
   return (
     <div className="app-shell">
+      <AppShellMetrics />
       <header className="app-header">
-        <Link className="brand" href="/" aria-label="食迹首页">
+        <PendingNavigationLink className="brand" href="/" aria-label="食迹首页" prefetch={false}>
           <Image className="brand__badge" src="/mascot/icon-192.png" width={34} height={34} alt="" priority />
           <span className="brand__name">食迹</span>
-        </Link>
+        </PendingNavigationLink>
         <button className="group-status" type="button" aria-label={`当前共同地图：${displayedGroupName}`}>
           <span className="status-dot" aria-hidden="true" />
           {displayedGroupName}
@@ -27,15 +29,17 @@ export function AppShell({ children, activeNav = "发现", groupName }: { childr
       <main className="app-main">{children}</main>
       <nav className="bottom-nav" aria-label="主导航">
         {navigation.map(({ label, icon, href, add }) => (
-          <Link
+          <PendingNavigationLink
             aria-current={label === activeNav ? "page" : undefined}
             className={`nav-item${label === activeNav ? " nav-item--active" : ""}${add ? " nav-item--add" : ""}`}
             href={href}
             key={label}
+            pendingLabel="正在打开…"
+            navigationSource="bottom-nav"
           >
             <Image className="nav-item__icon" src={icon} width={40} height={40} alt="" />
             <span>{label}</span>
-          </Link>
+          </PendingNavigationLink>
         ))}
       </nav>
     </div>

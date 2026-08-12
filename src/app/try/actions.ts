@@ -40,12 +40,6 @@ export async function createPlaceCandidate(_: CandidateResult, formData: FormDat
     p_latitude: value.latitude, p_longitude: value.longitude, p_heard_from: value.heard_from ?? null, p_expectation: value.expectation ?? null,
   });
   if (error) return { error: error.message.includes("already recommended") ? "这家已在发现中，无需再加入去试试。" : error.message.includes("cannot be added again") ? "这家暂时不能重复加入候选。" : userFacingError(error) };
-  const { data: place } = await activeGroup.supabase.from("places").select("id").eq("source_provider", "amap").eq("source_poi_id", value.poi_id).maybeSingle();
-  // AMap cache is display-only: its failure must never prevent a valid private
-  // candidate from being saved. The edge function throttles repeated requests.
-  if (place?.id) await activeGroup.supabase.functions.invoke("amap-poi-search", {
-    body: { operation: "business_area_backfill", placeId: place.id },
-  }).catch(() => undefined);
   revalidatePath("/try");
   return { success: data?.[0]?.created ? "已加入去试试。" : "这家已经在去试试列表中。" };
 }

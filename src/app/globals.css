@@ -2,7 +2,7 @@
 
 @font-face {
   font-family: "Source Han Sans SC Local";
-  src: url("/fonts/source-han-sans-sc-v2.005.woff2") format("woff2");
+  src: url("/fonts/source-han-sans-sc-ui-v2-2.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -54,6 +54,12 @@ body {
   font-family: var(--font-ui);
 }
 
+.launch-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; color: var(--color-text); background: radial-gradient(circle at 50% 15%, #fffdf8 0, var(--color-bg) 62%); }
+.launch-page__card { width: min(100%, 390px); padding: 28px 22px; border: 1px solid var(--color-border); border-radius: 26px; background: rgb(255 253 248 / 94%); box-shadow: var(--shadow-card); }
+.launch-page__brand { display: flex; align-items: center; gap: 14px; }.launch-page__brand img { width: 72px; height: 72px; border-radius: 21px; box-shadow: 0 8px 20px rgb(132 72 49 / 18%); }.launch-page__brand h1 { margin: 4px 0 0; font-family: var(--font-display); font-size: 25px; font-weight: 400; line-height: 1.3; }.launch-page__status { display: grid; gap: 8px; margin-top: 27px; }.launch-page__status strong { font-size: 16px; }.launch-page__status span { color: var(--color-text-muted); font-size: 13px; line-height: 1.6; }.launch-page__status button { margin-top: 6px; }.launch-page__status a { color: var(--color-primary); font-size: 13px; font-weight: 750; text-align: center; }
+
+.pending-link-status { display: inline-flex; align-items: center; margin-left: 6px; color: var(--color-primary-strong); font-size: 11px; font-weight: 800; white-space: nowrap; }.nav-item .pending-link-status { position: absolute; right: 4px; bottom: 5px; margin: 0; padding: 2px 4px; border-radius: 6px; color: white; background: var(--color-primary-strong); }.nav-item { position: relative; }
+
 .site-compliance-footer {
   display: grid;
   gap: 3px;
@@ -89,6 +95,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--color-accent); 
   overflow: hidden;
   background: var(--color-bg);
 }
+
+.app-loading { padding: 24px 16px 34px; }.app-loading__intro { display: grid; gap: 8px; }.app-loading__eyebrow { color: var(--color-primary); font-size: 12px; font-weight: 800; letter-spacing: .08em; }.app-loading h1 { margin: 0; font-family: var(--font-display); font-size: 28px; font-weight: 400; }.app-loading p { margin: 0; color: var(--color-text-muted); font-size: 13px; line-height: 1.6; }.app-loading__card { display: grid; gap: 12px; margin-top: 24px; padding: 18px 16px; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-card); }.app-loading__card span { display: block; height: 14px; border-radius: 999px; background: linear-gradient(90deg, #e8e2d5 25%, #f5f1e8 50%, #e8e2d5 75%); background-size: 200% 100%; animation: foodprint-loading 1.2s ease-in-out infinite; }.app-loading__card span:first-child { width: 43%; }.app-loading__card span:nth-child(2) { width: 88%; }.app-loading__card span:nth-child(3) { width: 65%; }.app-loading__card--short span:last-child { width: 54%; }
+.route-loading { min-height: 52vh; padding: 26px 16px 34px; }.route-loading h1 { margin: 0; font-family: var(--font-display); font-size: 28px; font-weight: 400; }.route-loading p:not(.eyebrow) { color: var(--color-text-muted); font-size: 13px; line-height: 1.6; }.route-loading__grid { display: grid; gap: 12px; margin-top: 24px; }.route-loading__grid span { display: block; height: 96px; border-radius: var(--radius-card); background: linear-gradient(90deg, #e8e2d5 25%, #f5f1e8 50%, #e8e2d5 75%); background-size: 200% 100%; animation: foodprint-loading 1.2s ease-in-out infinite; }.content-ready-marker { display: block; width: 0; height: 0; overflow: hidden; }
+.private-photo { position: relative; display: block; width: 100%; height: 100%; min-width: 0; margin: 0; overflow: hidden; border-radius: inherit; background: linear-gradient(145deg, #e4eee6, #f3ddd4); }.private-photo img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: .01; transition: opacity .18s ease; }.private-photo--loaded img { opacity: 1; }.private-photo__placeholder { position: absolute; inset: 0; display: grid; place-items: center; padding: 8px; color: var(--color-text-muted); font-size: 11px; text-align: center; }.private-photo__retry { position: absolute; inset: auto 8px 8px; padding: 6px 9px; border: 0; border-radius: 999px; color: white; background: rgb(35 68 61 / 86%); font-size: 11px; font-weight: 800; }.activity-photo-strip .private-photo { flex: 0 0 104px; width: 104px; height: 104px; border-radius: 11px; }.visit-photo-strip .private-photo { flex: 0 0 88px; width: 88px; height: 88px; border-radius: 10px; }.navigation-feedback { position: fixed; z-index: 20; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); left: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border: 1px solid var(--color-border); border-radius: 14px; color: var(--color-text); background: rgb(255 253 248 / 96%); box-shadow: var(--shadow-card); font-size: 12px; }.navigation-feedback button { flex: 0 0 auto; padding: 6px 10px; border: 1px solid var(--color-primary); border-radius: 999px; color: var(--color-primary-strong); background: transparent; font-weight: 800; }
+@keyframes foodprint-loading { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 .app-header {
   height: calc(60px + env(safe-area-inset-top));
@@ -303,6 +314,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--color-accent); 
 .auth-card label { display: grid; gap: 6px; color: var(--color-text); font-size: 14px; font-weight: 700; }
 .auth-card input { width: 100%; height: 46px; padding: 0 12px; border: 1px solid var(--color-border); border-radius: 12px; color: var(--color-text); background: white; }
 .offline-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: linear-gradient(145deg, #dcebd8, var(--color-bg)); }.offline-page section { width: min(100%, 380px); padding: 28px 22px; border: 1px solid var(--color-border); border-radius: 24px; background: var(--color-surface); box-shadow: var(--shadow-card); text-align: center; }.offline-page h1 { margin: 7px 0 10px; font-size: 27px; }.offline-page p:not(.eyebrow) { color: var(--color-text-muted); line-height: 1.6; }.offline-dog { width: 154px; height: 154px; display: block; margin: -7px auto 8px; border-radius: 21px; object-fit: cover; object-position: center 54%; }.offline-page .primary-link { margin-top: 20px; }.pwa-update { position: fixed; z-index: 30; right: max(16px, calc((100vw - var(--phone-air-frame)) / 2 + 16px)); bottom: calc(84px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; color: white; background: #183b3a; box-shadow: 0 8px 22px rgb(0 0 0 / 24%); font-size: 12px; }.pwa-update button { min-height: 32px; padding: 0 9px; border: 0; border-radius: 9px; color: var(--color-primary-strong); background: #fff4dd; font-size: 12px; font-weight: 800; }.install-guide { display: grid; gap: 7px; margin-top: 12px; padding: 13px; border-radius: 13px; color: var(--color-text); background: #eef6f1; font-size: 13px; }.install-guide p { margin: 0; color: var(--color-text-muted); line-height: 1.5; }
+.route-error { min-height: 52vh; display: grid; place-items: center; padding: 24px 16px; background: var(--color-bg); }.route-error h1 { margin: 7px 0; font-size: 25px; }.route-error p:not(.eyebrow) { color: var(--color-text-muted); font-size: 13px; line-height: 1.6; }.route-error > div { display: flex; gap: 9px; margin-top: 18px; }.route-error .primary-button, .route-error .secondary-button { flex: 1; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .primary-button { min-height: 46px; border: 0; border-radius: 12px; color: white; background: var(--color-primary); font-weight: 800; }
 .form-error, .form-success { padding: 10px 12px; border-radius: 12px; font-size: 13px; }
 .form-error { color: #8d3030 !important; background: #fde9e5; }.form-success { color: #176441 !important; background: #e6f5e9; }.auth-note { margin-top: 22px; font-size: 13px; }

@@ -29,6 +29,9 @@ export type MapPlace = {
   savedForLater?: boolean;
   bowlStrength?: number | null;
   goodTagCounts?: Record<string, number>;
+  coverPhotoId?: string | null;
+  coverPhotoWidth?: number | null;
+  coverPhotoHeight?: number | null;
 };
 
 const defaultCenter: [number, number] = [116.397428, 39.90923];

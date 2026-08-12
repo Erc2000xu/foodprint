@@ -3,7 +3,7 @@
 This directory contains the non-secret production deployment templates for the Tencent Cloud Lighthouse runtime.
 
 - `compose.production.yml` runs the Next.js standalone image as a non-root container.
-- `nginx/foodprint-http.conf` defines privacy-aware access-log fields and the request-rate zone in the Nginx `http` context.
+- `nginx/foodprint-http.conf` defines privacy-aware access-log fields (including request/upstream timings) and separate page/API/auth request-rate zones in the Nginx `http` context.
 - `nginx/foodprint.conf` terminates TLS, redirects `www` to the canonical host, and proxies only to `127.0.0.1:3000`.
 - `systemd/foodprint-compose.service` starts the Compose project after Docker is available.
 
