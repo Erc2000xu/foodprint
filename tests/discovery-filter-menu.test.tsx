@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DiscoveryBrowser } from "@/components/map/map-browser";
-import type { MapPlace } from "@/components/map/amap-map";
+import type { DiscoveryPlace } from "@/lib/discovery/types";
 
 const replace = vi.fn();
 const refresh = vi.fn();
@@ -20,7 +20,7 @@ vi.mock("@/lib/amap/poi-client", () => ({
 }));
 
 vi.mock("@/components/map/map-adapter", () => ({
-  StaticMapAdapter: () => <div>地图</div>,
+  DynamicMapAdapter: () => <div>地图</div>,
 }));
 
 describe("V1.4 controlled discovery filter menus", () => {
@@ -65,7 +65,7 @@ describe("V1.4 controlled discovery filter menus", () => {
   });
 
   it("renders every place in the default scrollable discovery list", () => {
-    const places: MapPlace[] = Array.from({ length: 5 }, (_, index) => ({
+    const places: DiscoveryPlace[] = Array.from({ length: 5 }, (_, index) => ({
       id: `${index + 1}1111111-1111-4111-8111-111111111111`,
       name: `朋友推荐餐厅 ${index + 1}`,
       category: "restaurant",

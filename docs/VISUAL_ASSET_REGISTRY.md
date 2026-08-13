@@ -47,8 +47,27 @@ emoji 只能出现在用户输入的内容，或经过产品明确批准的轻�
 | IC-05 | 候选/去试试 | 1 | 添加候选、候选身份标签 | 定制小图标 | 待定义 | 语义应是“先记下想法”，不能像普通收藏 |
 | IC-06 | 导航去这里 | 1 | 去试试卡片、地点详情 | 标准 SVG + 品牌化容器 | 已接入，待验收 | `src/components/try/try-list.tsx`；16px 纸飞机式路线箭头、文字“导航去这里”，打开高德第三方导航 |
 | IC-07 | 下回吃爱心 | 2 状态 | 发现卡、个人收藏 | 标准 SVG | 待迭代 | 未收藏青绿描边；已收藏红色实心 |
+| IC-08 | V2.3 地图 Pin 与聚合 | 三级默认 / 选中 + 聚合 default / active + 用户位置 | 发现页动态地图 | 五套 ImageGen 方向探索；选定后用确定性 SVG / CSS 正式重绘 | 已接入代码，待真实地图 / 真机验收 | 2026-08-13 选定 B 餐盘定位圆章；`DynamicMapAdapter` / `MarkerCluster` 已使用正式资产 `public/icons/map-pins/`；规范 `docs/design/v2-3-map-pins/final/README.md`；禁止把方向 PNG 用于运行时 |
 
-### 4.1 IC-02｜“好在哪儿”正式资产清单
+### 4.1 IC-08｜V2.3 正式地图 Pin 资产清单
+
+产品负责人于 2026-08-13 从 A–E 五套方向中确认 B「餐盘定位圆章」。ImageGen 方向图只作为选择记录；生产版本为专门针对地图小尺寸重绘的确定性 SVG。
+
+| 语义 | 默认资产 | 选中 / 激活资产 |
+| --- | --- | --- |
+| 1 级「值得去」/ 一层小碗 | `public/icons/map-pins/pin-level-1-default.svg` | `public/icons/map-pins/pin-level-1-selected.svg` |
+| 2 级「想再去」/ 两层小碗 | `public/icons/map-pins/pin-level-2-default.svg` | `public/icons/map-pins/pin-level-2-selected.svg` |
+| 3 级「会专门去」/ 三层小碗 | `public/icons/map-pins/pin-level-3-default.svg` | `public/icons/map-pins/pin-level-3-selected.svg` |
+| 聚合 | `public/icons/map-pins/cluster-default.svg` | `public/icons/map-pins/cluster-active.svg` |
+| 用户当前位置 | `public/icons/map-pins/user-location.svg` | 不适用 |
+
+- 默认单点 40 × 45px；选中 48 × 54px；聚合 44 × 50px / 激活 48 × 54px；命中区至少 44 × 44px。
+- 单点 / 聚合统一以底部中心 `(0.5, 1)` 锚定经纬度；用户位置用独立蓝色体系。
+- 选中态同时改变尺寸与橙红轮廓；聚合数字由 DOM 动态显示 1–99 / 100+；按下、焦点、减少动态效果由统一 CSS 提供。
+- `public/icons/map-pins/manifest.json` 是机器清单；`src/lib/amap/map-pin-assets.ts` 与 `map-pin-elements.ts` 是运行入口；页面不得散写文件路径。
+- 小尺寸和模拟地图 QA 位于 `docs/design/v2-3-map-pins/final/qa/`；真实高德多底图、320 / 390 / 430px 和真机 QA 完成后再升级为“已接入 / 已验收”。
+
+### 4.2 IC-02｜“好在哪儿”正式资产清单
 
 产品负责人于 2026-07-30 确认 D“温暖餐桌物件”为正式方向。不得继续使用 C 版页面意向图或五套方向板中自动生成的占位图标。
 
@@ -97,7 +116,7 @@ emoji 只能出现在用户输入的内容，或经过产品明确批准的轻�
 
 | 页面 | 需要的品牌/语义视觉 | 当前优先级 |
 | --- | --- | --- |
-| 发现 | 三级小碗、四项评价、地点层级、推荐菜、爱心、无照片占位、筛选图标 | P0，V1.3.1 |
+| 发现 | 三级小碗、四项评价、地图 Pin / 聚合 / 选中态、地点层级、推荐菜、爱心、无照片占位、筛选图标 | P0，V2.3 动态地图 |
 | 去试试 | 候选标识、导航、商圈、定位、空状态、转正成功 | P0，V1.3.2 |
 | 记一顿 | 三级小碗、四项评价、照片上传、定位、成功插画 | P0，V1.3.x |
 | 饭后聊 | 三级小碗、评价维度、时间线节点 | P1 |

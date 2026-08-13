@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { DiscoveryPlaceCard } from "@/components/discover/discovery-place-card";
-import type { MapPlace } from "@/components/map/amap-map";
+import type { DiscoveryPlace } from "@/lib/discovery/types";
 
-const basePlace: MapPlace = {
+const basePlace: DiscoveryPlace = {
   id: "11111111-1111-4111-8111-111111111111",
   name: "一间名字很长但值得专门去吃的餐厅",
   category: "restaurant",

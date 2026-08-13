@@ -17,7 +17,7 @@ Foodprint 的代码、产品文档和 Supabase migration 已经位于 GitHub，�
 
 1. **Git 使用 SSH，不以 GitHub CLI token 作为 push 的唯一凭据。** 本机使用带口令的 Ed25519 key，存入 macOS Keychain；若 22 端口不可用，GitHub 连接固定走 ssh.github.com:443。gh 只用于 PR/API，并单独完成一次浏览器登录。
 2. **只保留 main 和临时 codex/<scope> 工作分支。** 常规工作分支从最新 main 创建，经 PR、应用 CI 和 migration-integrity 后合入 main；不新建或挪用 Supabase staging 项目。
-3. **GitHub Actions 是唯一的远端数据库部署执行者。** ci.yml 在 PR 上从零启动临时 Supabase 数据库并重放全部 migration；release.yml 只可从 main 手动启动，会重新验证代码和 migration 完整性，再执行 db push --dry-run、应用 migration、部署 Edge Functions，最后触发 Vercel Deploy Hook。
+3. **GitHub Actions 是唯一的远端数据库与应用发布执行者。** ci.yml 在 PR 上从零启动临时 Supabase 数据库并重放全部 migration；release.yml 只可从 main 手动启动，会重新验证代码和 migration 完整性，再执行 db push --dry-run、应用 migration、部署必要的 Edge Function，最后将不可变 commit-SHA 镜像发布到腾讯云并检查正式域名健康状态。
 4. **main 合入不自动部署。** 项目负责人必须在 GitHub Actions 手动运行 Release production，并精确输入 DEPLOY_PRODUCTION；该动作是生产发布的明确批准点。
 5. **Vercel 的 Git 自动部署在启用发布管道后关闭。** Release workflow 只在数据库成功后触发 Production Deploy Hook，避免新应用先于新 schema/RLS/RPC 上线。Vercel 仍保持与 GitHub 仓库关联，以便 Hook 从 main 构建。
 6. **生产数据库不再使用 SQL Editor 进行普通变更。** 所有变更先进入新的、按时间排序的 migration 文件；已上线 migration 永不修改。出现紧急例外时，必须补充 migration、记录原因并完成 history 对账后，才能恢复标准流程。

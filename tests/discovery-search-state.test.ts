@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { filterDiscoveryPlaces, searchStateFromParams, searchStateToParams } from "@/lib/discovery/search-state";
-import type { MapPlace } from "@/components/map/amap-map";
+import type { DiscoveryPlace } from "@/lib/discovery/types";
 
-const places: MapPlace[] = [
+const places: DiscoveryPlace[] = [
   { id: "wangfujing-cantonese", name: "王府井粤菜馆", category: "restaurant", latitude: 39.9, longitude: 116.4, averageRating: 4.8, markCount: 3, recommendCount: 3, sceneTags: ["friends_gathering", "date"], cuisineSlugs: ["cantonese"], geoEntityIds: ["wangfujing", "dongcheng", "wangfujing-station"], geoLabels: ["王府井", "东城区", "王府井站"], pricePerPerson: 168, recommendedItems: ["烧鹅"], review: "适合朋友聚餐", lastMarkedAt: "2026-07-20T00:00:00Z" },
   { id: "sanlitun-coffee", name: "三里屯咖啡", category: "cafe", latitude: 39.93, longitude: 116.45, averageRating: 4.2, markCount: 1, recommendCount: 1, sceneTags: ["afternoon_tea"], cuisineSlugs: ["coffee_tea"], geoEntityIds: ["sanlitun", "chaoyang"], geoLabels: ["三里屯", "朝阳区"], pricePerPerson: null, recommendedItems: ["手冲"], review: "下午安静坐坐", lastMarkedAt: "2026-07-22T00:00:00Z" },
 ];
