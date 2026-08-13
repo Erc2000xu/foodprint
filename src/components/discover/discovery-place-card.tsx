@@ -1,13 +1,14 @@
 import { PendingNavigationLink } from "@/components/shell/pending-navigation-link";
 import { NavigationIntentLink } from "@/components/navigation/navigation-coordinator";
-import { PrivatePhoto } from "@/components/photo/private-photo";
-import type { MapPlace } from "@/components/map/amap-map";
+import { DiscoveryCardPhoto } from "@/components/photo/discovery-card-photo";
+import type { DiscoveryPlace } from "@/lib/discovery/types";
 import { OpinionCounts } from "@/components/discover/opinion-counts";
 import { WishlistToggle } from "@/components/discover/wishlist-toggle";
 import { BowlIcon, toBowlLevel } from "@/components/recommendation/bowl-icon";
 import { displayAmapLocationChain } from "@/lib/amap/location-display";
 import { sceneTagLabels } from "@/lib/mark-options";
 import { PlaceManagementControl } from "@/components/place/place-management-control";
+import { canonicalFriendCount } from "@/lib/discovery/types";
 
 const bowlLabels = ["", "值得去", "想再去", "会专门去"];
 
@@ -21,7 +22,7 @@ export function DiscoveryPlaceCard({
   isFirst = false,
   onNavigate,
 }: {
-  place: MapPlace;
+  place: DiscoveryPlace;
   href: string;
   cuisineLabel?: string;
   categoryLabel: string;
@@ -35,25 +36,27 @@ export function DiscoveryPlaceCard({
   const remainingDishCount = Math.max(0, dishes.length - shownDishes.length);
   const location = displayAmapLocationChain(place.city, place.district, place.businessAreaName);
   const hasOpinionCounts = Object.values(place.goodTagCounts ?? {}).some((count) => count > 0);
+  const friendCount = canonicalFriendCount(place);
 
+  const locationLabel = location || "位置待补充";
   return <article className="home-place-card-wrap">
     <div className={`home-place-card${canManage ? " home-place-card--manageable" : ""}`}>{canManage && <PlaceManagementControl groupPlaceId={place.id} placeName={place.name} />}
       <div className="home-place-card__media">
         <NavigationIntentLink href={href} source="place-card" className="home-place-card__photo-link" aria-label={`查看 ${place.name}`} onClick={() => onNavigate?.()}>
           <div className="home-place-card__photo">
-            {place.coverPhotoUrl ? <PrivatePhoto src={place.coverPhotoUrl} photoId={place.coverPhotoId ?? undefined} alt={`${place.name} 的真实照片`} width={place.coverPhotoWidth ?? 640} height={place.coverPhotoHeight ?? 640} priority={isFirst} /> : <span>暂无照片</span>}
+            <DiscoveryCardPhoto photoId={place.coverPhotoId} initialUrl={place.coverPhotoUrl} alt={`${place.name} 的真实照片`} width={place.coverPhotoWidth ?? 640} height={place.coverPhotoHeight ?? 640} priority={isFirst} />
           </div>
         </NavigationIntentLink>
         <WishlistToggle groupPlaceId={place.id} initialWanted={Boolean(place.savedForLater)} />
       </div>
       <PendingNavigationLink href={href} className="home-place-card__body" pendingLabel="正在打开地点…" onClick={() => onNavigate?.()}>
-        <p className="home-place-card__meta">{[cuisineLabel || categoryLabel, location].filter(Boolean).join(" · ")}</p>
+        <p className="home-place-card__meta">{[cuisineLabel || categoryLabel, locationLabel].filter(Boolean).join(" · ")}</p>
         <h2>{place.name}</h2>
         <p className="home-place-card__location">{nearbyLabel ? `靠近 ${nearbyLabel} · ` : ""}{place.pricePerPerson !== null && place.pricePerPerson !== undefined ? `人均 ¥${Math.round(place.pricePerPerson)}` : "人均待补充"}</p>
         {place.bowlStrength ? <div className="home-place-card__score-line">
           <BowlIcon level={toBowlLevel(place.bowlStrength)} size="md" />
-          <span><b>{bowlLabels[toBowlLevel(place.bowlStrength)]}</b> · {place.markCount} 位朋友吃过</span>
-        </div> : place.markCount ? <div className="home-place-card__score-line"><b>{place.averageRating.toFixed(1)}</b><span>有 {place.markCount} 位朋友留过记录</span></div> : <div className="home-place-card__score-line"><b>新地点</b><span>已有朋友留下记录</span></div>}
+          <span><b>{bowlLabels[toBowlLevel(place.bowlStrength)]}</b> · {friendCount} 位朋友吃过</span>
+        </div> : friendCount ? <div className="home-place-card__score-line"><b>{(place.averageRating ?? 0).toFixed(1)}</b><span>有 {friendCount} 位朋友留过记录</span></div> : <div className="home-place-card__score-line"><b>新地点</b><span>已有朋友留下记录</span></div>}
         {hasOpinionCounts ? <OpinionCounts counts={place.goodTagCounts ?? {}} /> : place.sceneTags.length > 0 ? <p className="home-place-card__scenes">适合：{place.sceneTags.map((slug) => sceneTagLabels[slug] ?? slug).join(" · ")}</p> : null}
         {shownDishes.length > 0 ? <div className="home-place-card__recommend"><b>推荐菜</b><span>{shownDishes.join("、")}{remainingDishCount > 0 ? `，等 ${remainingDishCount} 道` : ""}</span></div> : place.review ? <p className="home-place-card__review">{place.review}</p> : null}
       </PendingNavigationLink>

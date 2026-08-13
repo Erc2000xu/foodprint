@@ -1,12 +1,12 @@
 # 食迹 Foodprint｜免费版单生产环境与应用发布 SOP
 
-> 状态：已确认采用方案 B；V2-A 应用已运行在腾讯云，历史 migration 对账已于 2026-08-03 完成；腾讯云自动发布仍待实现
+> 状态：已确认采用方案 B；V2-A 应用已运行在腾讯云；V2.3 腾讯云自动发布 workflow 与主机安装器已加入本分支，启用前需完成一次性外部配置
 > 生效范围：任何需要进入 GitHub 的代码、测试、migration、Edge Function 或正式开发文档
 > 关联决策：[免费版单生产环境发布管道](decisions/2026-08-03-free-tier-release-pipeline.md)
 
 ## 1. 一句话规则
 
-**GitHub 是代码源；GitHub Actions 是唯一可以写入远端 Supabase、部署 Edge Function 和触发受控生产发布的执行者。V2-A 当前正式应用运行在腾讯云，本轮因自动化尚未完成使用了人工部署例外；项目负责人通过手动启动 Production workflow 作出最后发布决定。**
+**GitHub 是代码源；GitHub Actions 是唯一可以写入远端 Supabase、部署 Edge Function 和触发受控腾讯云生产发布的执行者。项目负责人通过从 main 手动启动 Release production workflow 作出最后发布决定。**
 
 合入 main 只更新代码仓库，绝不会自动改动 Supabase 或腾讯云。任何 Codex 对话都不得改用本机 supabase db push、生产 SQL Editor、vercel --prod 或直接修改腾讯云源码来临时发布。失败时停在 workflow 的错误处处理，不能复制 SQL 绕过。
 
@@ -74,13 +74,24 @@ GitHub Repository Actions secrets 使用以下固定名称：
 - SUPABASE_ACCESS_TOKEN
 - SUPABASE_PROJECT_ID
 - SUPABASE_DB_PASSWORD
-- VERCEL_DEPLOY_HOOK
+- TENCENT_HOST
+- TENCENT_DEPLOY_USER
+- TENCENT_SSH_PRIVATE_KEY
+- TENCENT_KNOWN_HOSTS
+- PRODUCTION_NEXT_PUBLIC_SUPABASE_URL
+- PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+GitHub repository variables 使用以下固定名称：
+
+- TENCENT_PORT
+- PRODUCTION_NEXT_PUBLIC_ICP_RECORD
+- RELEASE_AUTOMATION_ENABLED
 
 采用仓库级 Actions secrets 和手动 workflow，是为了在 GitHub Free 的私有仓库中也能执行，不依赖可能不可用的 Environment 审批功能。
 
 ## 6. Vercel 过渡回滚配置
 
-Vercel 不再是 V2-A 正式运行时。稳定期内保留旧 Production 部署和必要的回滚配置；若未来继续使用 Deploy Hook，仍须确保它不会连接会写入 production 的 Preview 环境。
+Vercel 不再是 V2-A/V2.3 正式运行时。稳定期内保留旧 Production 部署作为人工 DNS/入口回滚落点；新的腾讯云发布 workflow 不依赖 Vercel Deploy Hook。
 
 ~~~json
 {
@@ -95,7 +106,7 @@ Vercel 不再是 V2-A 正式运行时。稳定期内保留旧 Production 部署�
 - 不为此单生产方案配置会写入真实数据的 Preview 环境。
 - production Edge Function 的 APP_ALLOWED_ORIGINS 只包含正式域名和明确需要的本地开发来源。
 
-在 Hook、Actions secrets 和迁移历史审计完成前，不合入上述 vercel.json；否则会停止现有 Git 自动部署，却没有替代触发器。
+该配置只用于旧 Vercel 回滚，不参与 V2.3 的正常发布。
 
 ## 7. GitHub 与本机网络
 
@@ -119,13 +130,14 @@ Vercel 不再是 V2-A 正式运行时。稳定期内保留旧 Production 部署�
 
 项目负责人只在浏览器完成账户与密钥操作；Codex 负责生成、核对和验证，但不索取任何 secret：
 
-1. 历史 migration 对账已完成，证据与当前状态见 [发布与迁移 SOP 收束交接](FOODPRINT_RELEASE_SOP_HANDOFF_2026-08-03.md)。一次性 Verify、Reconcile 与 Repair 工作流已从仓库移除，今后不得重建、重跑或通过 SQL Editor 回放旧 migration。
-   - 如未来出现本地与远端 history 不一致，先停止发布，运行只读 **Audit production migration history**，逐项核对实际对象，并以新的、明确审阅过的向前修复方案处理；不得使用 `--include-all`、reset 或盲目 repair。
+1. 在 GitHub Actions 从 main 手动运行 Audit production migration history；它只读取并列出本地与远端 migration history。若本地有、远端 history 没有的旧版本，先运行 Verify legacy migration state；它只导出 public schema 到临时 runner 并核对旧迁移留下的对象，绝不写入数据、schema 或 history。只有两项审计都通过后，才可逐条批准 repair 为 applied，不重放 SQL。
 2. 在 GitHub Repository Actions secrets 添加 Supabase 生产凭据，以及腾讯云发布 workflow 所需的受控凭据；名称以最终 workflow 为准，不要发送给 Codex。
 3. 核对 Vercel 旧 Production 部署可回滚，并核对 Production 环境变量。
 4. 在 Supabase 配置 production Edge Function secrets 与 Origin 白名单。
 5. 完成 SSH public key 配置，验证后将 Git remote 切换至 SSH；单独恢复 gh 的浏览器登录。
-6. 完成前五项后，新增腾讯云发布 workflow；该提交不应包含任何 schema 或产品功能变更。
-7. 完成腾讯云 workflow 的 dry-run、预检、健康检查和回滚演练后，将对应的 GitHub repository variable 设为 true，并手动运行一次 Release production 完成全链路演练。
+6. 在现有腾讯云主机以 root 安装 `deploy/server/foodprint-install-release` 和 `deploy/systemd/foodprint-deploy.sudoers`，并核对 `/etc/foodprint/production.env` 的 V2.3 运行时变量；具体命令见 [`deploy/README.md`](../deploy/README.md)。
+7. 在高德控制台把生产 JavaScript Key 的域名白名单设置为 `foodprint.com.cn`；在 Supabase Edge Function Secrets 设置 Web Service Key 与 `APP_ALLOWED_ORIGINS`。
+8. 在 GitHub Repository Actions secrets/variables 填入 `deploy/README.md` 所列项目，先运行 migration audit 和 release 预检；确认 host key、健康检查与回滚路径后，才将 `RELEASE_AUTOMATION_ENABLED` 设为 `true`。
+9. 合入 main 后，在 GitHub Actions 从 main 手动运行 Release production，确认框精确输入 `DEPLOY_PRODUCTION`，再在 `https://foodprint.com.cn` 完成前台验收。
 
 完成后，日常工作不再需要在终端登录 GitHub、把 SQL 粘贴到 Supabase，或直接 SSH 到腾讯云上传应用；GitHub 仍是代码源，腾讯云只是运行环境。
