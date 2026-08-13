@@ -12,7 +12,19 @@ if (!existsSync(schemaPath)) {
   process.exit(1);
 }
 
-const schema = readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n");
+const rawSchema = readFileSync(schemaPath, "utf8").replaceAll("\r\n", "\n");
+
+// `supabase db dump` uses pg_dump's quoted identifier format, for example:
+// `CREATE TABLE IF NOT EXISTS "public"."group_places" (...)` and
+// `CREATE OR REPLACE FUNCTION "public"."archive_group_place" (...)`.
+// Normalize only dump syntax before applying the structural checks below so
+// the verifier checks the actual remote schema instead of depending on one
+// particular pg_dump formatting version.
+const schema = rawSchema
+  .replaceAll(/"([A-Za-z_][A-Za-z0-9_]*)"/g, "$1")
+  .replaceAll(/\bCREATE TABLE IF NOT EXISTS\b/g, "CREATE TABLE")
+  .replaceAll(/\bCREATE OR REPLACE FUNCTION\b/g, "CREATE FUNCTION")
+  .replaceAll(/\bCREATE OR REPLACE TRIGGER\b/g, "CREATE TRIGGER");
 const failures = [];
 let verified = 0;
 
@@ -26,7 +38,7 @@ function check(label, pattern) {
 }
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
 }
 
 function tableDefinition(tableName) {
