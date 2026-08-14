@@ -63,6 +63,7 @@ bundle_path="$2"
 release_dir="${releases_dir}/${release_sha}"
 temporary_release_dir="${release_dir}.tmp.$$"
 backup_dir="${base_dir}/backups/${release_sha}"
+archive_listing="$(mktemp)"
 install -d -m 0750 "$incoming_dir"
 install -d -m 0755 "$releases_dir" "$backup_dir"
 [[ ! -e "$release_dir" ]] || fail "release already exists: ${release_sha}"
@@ -74,25 +75,30 @@ expected_entries=(
   "deploy/nginx/foodprint.conf"
 )
 
+cleanup_temporary() {
+  rm -f "$archive_listing"
+  rm -rf "$temporary_release_dir"
+}
+trap cleanup_temporary EXIT
+
+if ! tar -tzf "$bundle_path" >"$archive_listing"; then
+  fail "could not read release bundle"
+fi
+
 while IFS= read -r entry; do
   case "$entry" in
     foodprint-image.tar|deploy/compose.production.yml|deploy/nginx/foodprint-http.conf|deploy/nginx/foodprint.conf) ;;
     *) fail "unexpected path in release bundle: ${entry}" ;;
   esac
-done < <(tar -tzf "$bundle_path")
+done < "$archive_listing"
 
 for entry in "${expected_entries[@]}"; do
-  tar -tzf "$bundle_path" | grep -Fqx "$entry" || fail "missing ${entry} in release bundle"
+  grep -Fqx "$entry" "$archive_listing" || fail "missing ${entry} in release bundle"
 done
 
 mkdir -p "$temporary_release_dir"
-cleanup_temporary() {
-  rm -rf "$temporary_release_dir"
-}
-trap cleanup_temporary EXIT
 tar --extract --gzip --file "$bundle_path" --directory "$temporary_release_dir" --no-same-owner --no-same-permissions
 mv "$temporary_release_dir" "$release_dir"
-trap - EXIT
 
 if ! docker load --input "$release_dir/foodprint-image.tar" >/dev/null; then
   rm -rf "$release_dir"
