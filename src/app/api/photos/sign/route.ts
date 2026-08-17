@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { selectPhotoResource } from "@/lib/photos/photo-resource";
 
 export const dynamic = "force-dynamic";
 
@@ -11,13 +12,23 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "authentication_required" }, { status: 401, headers: { "Cache-Control": "no-store" } });
-  const { data: photos, error } = await supabase.from("photos").select("id, thumbnail_object_key, thumbnail_width, thumbnail_height").in("id", [...new Set(parsed.data.photoIds)]).is("deleted_at", null).is("hidden_at", null);
+  const requestedIds = [...new Set(parsed.data.photoIds)];
+  const { data: photos, error } = await supabase.from("photos").select("id, object_key, width, height, thumbnail_object_key, thumbnail_width, thumbnail_height").in("id", requestedIds).is("deleted_at", null).is("hidden_at", null);
   if (error) return Response.json({ error: "photo_lookup_failed" }, { status: 503, headers: { "Cache-Control": "no-store" } });
-  const eligible = (photos ?? []).filter((photo) => photo.thumbnail_object_key);
-  const { data: signed, error: signedError } = eligible.length
-    ? await supabase.storage.from("place-photos").createSignedUrls(eligible.map((photo) => photo.thumbnail_object_key as string), 60 * 15)
+  const resources = (photos ?? []).flatMap((photo) => {
+    const resource = selectPhotoResource(photo);
+    return resource ? [{ photo, resource }] : [];
+  });
+  const { data: signed, error: signedError } = resources.length
+    ? await supabase.storage.from("place-photos").createSignedUrls(resources.map(({ resource }) => resource.key), 60 * 15)
     : { data: [], error: null };
   if (signedError) return Response.json({ error: "photo_sign_failed" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   const signedByPath = new Map((signed ?? []).map((item) => [item.path, item.signedUrl]));
-  return Response.json({ photos: eligible.flatMap((photo) => { const signedUrl = signedByPath.get(photo.thumbnail_object_key as string); return signedUrl ? [{ id: photo.id, signedUrl, width: photo.thumbnail_width, height: photo.thumbnail_height }] : []; }) }, { headers: { "Cache-Control": "no-store" } });
+  const visibleIds = new Set((photos ?? []).map((photo) => photo.id));
+  const signedPhotos = resources.flatMap(({ photo, resource }) => {
+    const signedUrl = signedByPath.get(resource.key);
+    return signedUrl ? [{ id: photo.id, signedUrl, width: resource.width, height: resource.height, resource: resource.resource }] : [];
+  });
+  const unavailablePhotoIds = requestedIds.filter((id) => !visibleIds.has(id) || !signedPhotos.some((photo) => photo.id === id));
+  return Response.json({ photos: signedPhotos, unavailablePhotoIds }, { headers: { "Cache-Control": "no-store" } });
 }

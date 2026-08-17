@@ -11,10 +11,10 @@ const navigation = [
   { label: "我的", icon: "/nav-icons/profile.png", href: "/admin" },
 ];
 
-export function AppShell({ children, activeNav = "发现", groupName }: { children: ReactNode; activeNav?: string; groupName?: string | null }) {
+export function AppShell({ children, activeNav = "发现", groupName, variant = "default" }: { children: ReactNode; activeNav?: string; groupName?: string | null; variant?: "default" | "map" }) {
   const displayedGroupName = groupName?.trim() || "共同地图";
   return (
-    <div className="app-shell">
+    <div className={`app-shell${variant === "map" ? " app-shell--map" : ""}`} data-shell-variant={variant}>
       <AppShellMetrics />
       <header className="app-header">
         <PendingNavigationLink className="brand" href="/" aria-label="食迹首页" prefetch={false}>

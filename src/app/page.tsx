@@ -13,7 +13,8 @@ function DiscoveryFallback() {
   return <div className="empty-note">正在打开发现…</div>;
 }
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+  const requestedView = (await searchParams).view;
   const mapRuntimeConfig = readDiscoveryMapRuntimeConfig();
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return <AppShell activeNav="发现"><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser places={[]} cuisineOptions={cuisineOptions} mapRuntimeConfig={mapRuntimeConfig} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
   const supabase = await createClient();
@@ -22,5 +23,6 @@ export default async function Home() {
   const indexResult = await measureServerOperation("/", "discovery.page.total", () => loadDiscoveryIndexV23(supabase), (result) => ({ count: result.places.length, outcome: result.status }));
   const pagePlaces = indexResult.status === "error" || indexResult.status === "overflow" ? [] : indexResult.places;
   const pageMapConfig = mapRuntimeConfig.enabled && indexResult.status === "complete" && indexResult.places.length > 0 ? mapRuntimeConfig : { enabled: false } as const;
-  return <AppShell activeNav="发现" groupName={context.groupName}><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser canManage={context.role === "owner" || context.role === "admin"} places={pagePlaces} indexStatus={indexResult.status} cuisineOptions={cuisineOptions} mapRuntimeConfig={pageMapConfig} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
+  const mapVariant = requestedView !== "list" && pageMapConfig.enabled;
+  return <AppShell activeNav="发现" groupName={context.groupName} variant={mapVariant ? "map" : "default"}><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser canManage={context.role === "owner" || context.role === "admin"} places={pagePlaces} indexStatus={indexResult.status} cuisineOptions={cuisineOptions} mapRuntimeConfig={pageMapConfig} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
 }

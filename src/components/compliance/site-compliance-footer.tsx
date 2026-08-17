@@ -1,13 +1,7 @@
-const MIIT_FILING_URL = "https://beian.miit.gov.cn/";
+import { MIIT_FILING_URL, resolveIcpRecord } from "@/lib/compliance/icp";
 
-/**
- * The ICP number is deliberately opt-in. An empty value keeps the component
- * invisible until the owner confirms the exact filing number and approves the
- * public placement.
- */
 export function SiteComplianceFooter() {
-  const icpRecord = process.env.NEXT_PUBLIC_ICP_RECORD?.trim();
-  if (!icpRecord) return null;
+  const icpRecord = resolveIcpRecord();
 
   return (
     <footer className="site-compliance-footer" aria-label="网站备案信息">

@@ -16,11 +16,14 @@ describe("V2.3 map and sheet state", () => {
     expect(mapModeReducer(loading, { type: "MAP_FATAL", retryGeneration: 2, failure: { stage: "sdk_load", code: "sdk_rejected", retryable: true } })).toEqual({ kind: "list", reason: "map-failure" });
   });
 
-  it("opens a selected place in the card sheet and preserves the four detents", () => {
+  it("uses the three business-semantic sheet states", () => {
     const selected = viewportSheetReducer(initialViewportSheetState, { type: "SELECT_PLACE", placeId: "place-1" });
-    expect(selected).toEqual({ detent: "card", selectedPlaceId: "place-1" });
-    expect(viewportSheetReducer({ ...selected, detent: "half" }, { type: "ESCAPE" })).toEqual({ detent: "card", selectedPlaceId: "place-1" });
-    expect(viewportSheetReducer({ detent: "expanded" }, { type: "ESCAPE" })).toEqual({ detent: "half" });
-    expect(viewportSheetReducer(selected, { type: "ESCAPE" })).toEqual({ detent: "peek" });
+    expect(selected).toEqual({ status: "place_preview", selectedPlaceId: "place-1" });
+    expect(viewportSheetReducer(selected, { type: "OPEN_VIEWPORT_LIST" })).toEqual({ status: "viewport_list", selectedPlaceId: "place-1" });
+    expect(viewportSheetReducer({ status: "viewport_list", selectedPlaceId: "place-1" }, { type: "ESCAPE" })).toEqual(selected);
+    expect(viewportSheetReducer({ status: "viewport_list" }, { type: "ESCAPE" })).toEqual({ status: "summary" });
+    expect(viewportSheetReducer(selected, { type: "ESCAPE" })).toEqual({ status: "summary" });
+    expect(viewportSheetReducer(selected, { type: "FILTER_CHANGED", selectedPlaceStillVisible: false })).toEqual({ status: "summary" });
+    expect(viewportSheetReducer(initialViewportSheetState, { type: "RESTORE_RETURN_STATE", status: "place_preview", selectedPlaceId: "place-2" })).toEqual({ status: "place_preview", selectedPlaceId: "place-2" });
   });
 });

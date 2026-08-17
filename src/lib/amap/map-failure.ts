@@ -15,6 +15,7 @@ export type MapFailureCode =
   | "provider_unavailable"
   | "sdk_rejected"
   | "complete_timeout"
+  | "pin_mapping_failed"
   | "runtime_unrecoverable"
   | "unknown";
 
