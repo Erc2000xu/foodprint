@@ -33,6 +33,7 @@ export const clientMetricNames = [
   "amap_load_started",
   "amap_ready",
   "amap_failed",
+  "map_pin_mapping_failed",
   "discovery_fallback_to_list",
   "map_pin_selected",
   "map_cluster_opened",

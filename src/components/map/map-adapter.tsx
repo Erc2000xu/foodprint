@@ -5,6 +5,7 @@ import { createMapClusterElement, createMapPinElement, createMapUserLocationElem
 import { mapFailure, mapFailureFromUnknown, type MapFailure } from "@/lib/amap/map-failure";
 import { loadAmap } from "@/lib/amap/load-amap";
 import { toMapPinRecommendationLevel } from "@/lib/amap/map-pin-assets";
+import { buildMapCoordinateBuckets, createMapPinData, readMapPlaceReference, resolveMapPlaceIndex } from "@/lib/amap/map-pin-mapping";
 import type { LngLat, MapDiscoveryPlace, MapPadding, MapViewport } from "@/lib/discovery/types";
 import { reportClientMetric } from "@/lib/performance/client";
 
@@ -35,6 +36,7 @@ type AMapMap = {
   setCenter?: (center: number[]) => void;
   panTo?: (center: number[]) => void;
   panBy?: (x: number, y: number) => void;
+  setPadding?: (padding: [number, number, number, number]) => void;
   lngLatToContainer?: (lngLat: number[]) => { getX?: () => number; getY?: () => number; x?: number; y?: number };
   plugin?: (plugins: string[], callback: () => void) => void;
   destroy?: () => void;
@@ -77,6 +79,7 @@ type MapAdapterProps = {
   retryGeneration?: number;
   locateRequest?: number;
   fitRequestKey?: string;
+  restoreViewport?: MapViewport;
   padding?: MapPadding;
   onReady?: () => void;
   onViewportSettled?: (viewport: MapViewport) => void;
@@ -108,43 +111,38 @@ function readClusterContext(value: unknown): ClusterContext {
   return asObject(value) as ClusterContext ?? {};
 }
 
+function readClusterEventContext(value: unknown): ClusterContext {
+  const context = readClusterContext(value);
+  const event = asObject(value);
+  const target = asObject(event?.target);
+  if (!context.marker && target) return { ...context, marker: target as AMapMarker };
+  return context;
+}
+
 function markerList(value: unknown): AMapMarker[] {
   if (Array.isArray(value)) return value.filter((candidate): candidate is AMapMarker => Boolean(asObject(candidate)));
   return asObject(value) ? [value as AMapMarker] : [];
 }
 
-function markerData(value: unknown): Record<string, unknown> | null {
-  const object = asObject(value);
-  if (!object) return null;
-  const extension = typeof object.getExtData === "function" ? object.getExtData() : object.extData;
-  return asObject(extension) ?? object;
-}
-
-function readPlaceIndex(value: unknown): number | null {
-  const object = markerData(value);
-  if (!object) return null;
-  for (const candidate of [object.placeIndex, asObject(object.extData)?.placeIndex, asObject(object.data)?.placeIndex]) {
-    const parsed = numberValue(candidate);
-    if (parsed !== null && parsed >= 0) return Math.floor(parsed);
-  }
-  return null;
-}
-
 function readClusterCount(context: ClusterContext) {
   const count = numberValue(context.count);
   if (count !== null) return Math.max(1, Math.floor(count));
-  return Math.max(1, markerList(context.marker).length, context.markers?.length ?? 0, context.clusterData?.length ?? 0);
+  return Math.max(1, markerList(context.marker).length, context.markers?.length ?? 0, context.clusterData?.length ?? 0, Array.isArray(context.data) ? context.data.length : 0);
 }
 
 function readClusterPlaceIds(context: ClusterContext, places: readonly MapDiscoveryPlace[]) {
   const ids = new Set<string>();
   const candidates = [...markerList(context.marker), ...(context.markers ?? []), ...(context.clusterData ?? []), ...(Array.isArray(context.data) ? context.data : context.data ? [context.data] : [])];
   candidates.forEach((candidate) => {
-    const data = markerData(candidate);
-    const clusterIds = data?.clusterPlaceIds;
+    const data = asObject(candidate);
+    const extension = data && typeof data.getExtData === "function" ? asObject(data.getExtData()) : asObject(data?.extData);
+    const clusterIds = extension?.clusterPlaceIds ?? data?.clusterPlaceIds;
     if (Array.isArray(clusterIds)) clusterIds.forEach((id) => { if (typeof id === "string") ids.add(id); });
-    const index = readPlaceIndex(data) ?? readPlaceIndex(candidate);
-    if (index !== null && places[index]) ids.add(places[index].id);
+    const reference = readMapPlaceReference(candidate);
+    const extensionReference = readMapPlaceReference(extension);
+    const resolvedReference = reference.placeId || reference.placeIndex !== undefined ? reference : extensionReference;
+    if (resolvedReference.placeId && places.some((place) => place.id === resolvedReference.placeId)) ids.add(resolvedReference.placeId);
+    if (resolvedReference.placeIndex !== undefined && places[resolvedReference.placeIndex]) ids.add(places[resolvedReference.placeIndex].id);
   });
   return [...ids];
 }
@@ -171,7 +169,11 @@ function fitMapToPins(map: AMapMap, pins: readonly MapDiscoveryPlace[], padding:
     map.setZoomAndCenter(15, [place.longitude, place.latitude]);
     return;
   }
-  map.setFitView?.(undefined, false, [padding.top, padding.bottom, padding.left, padding.right], 15);
+  map.setFitView?.(undefined, false, [padding.top, padding.right, padding.bottom, padding.left], 15);
+}
+
+function applyMapPadding(map: AMapMap, padding: MapPadding) {
+  map.setPadding?.([padding.top, padding.right, padding.bottom, padding.left]);
 }
 
 function pixelCoordinate(value: { getX?: () => number; getY?: () => number; x?: number; y?: number } | null | undefined) {
@@ -189,6 +191,7 @@ export function DynamicMapAdapter({
   retryGeneration = 0,
   locateRequest = 0,
   fitRequestKey = "",
+  restoreViewport,
   padding = { top: 32, right: 24, bottom: 260, left: 24 },
   onReady,
   onViewportSettled,
@@ -210,7 +213,9 @@ export function DynamicMapAdapter({
   const userMarkerRef = useRef<AMapMarker | null>(null);
   const markerByPlaceIdRef = useRef(new Map<string, AMapMarker>());
   const latestPinsRef = useRef(pins);
+  const coordinateBucketsRef = useRef(buildMapCoordinateBuckets(pins));
   const selectedPlaceIdRef = useRef(selectedPlaceId);
+  const restoreViewportRef = useRef(restoreViewport);
   const callbacksRef = useRef({ onReady, onViewportSettled, onSelectPlace, onClearSelection, onClusterOpened, onLocationResult, onLocationError, onFatalError });
   const paddingRef = useRef(padding);
   const lastLocateRequestRef = useRef(locateRequest);
@@ -218,10 +223,12 @@ export function DynamicMapAdapter({
 
   useEffect(() => {
     latestPinsRef.current = pins;
+    coordinateBucketsRef.current = buildMapCoordinateBuckets(pins);
     selectedPlaceIdRef.current = selectedPlaceId;
     callbacksRef.current = { onReady, onViewportSettled, onSelectPlace, onClearSelection, onClusterOpened, onLocationResult, onLocationError, onFatalError };
     paddingRef.current = padding;
-  }, [onClearSelection, onClusterOpened, onFatalError, onLocationError, onLocationResult, onReady, onSelectPlace, onViewportSettled, padding, pins, selectedPlaceId]);
+    restoreViewportRef.current = restoreViewport;
+  }, [onClearSelection, onClusterOpened, onFatalError, onLocationError, onLocationResult, onReady, onSelectPlace, onViewportSettled, padding, pins, restoreViewport, selectedPlaceId]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -234,6 +241,7 @@ export function DynamicMapAdapter({
     let clusterClickHandler: AMapEventHandler | undefined;
     let mapClickHandler: AMapEventHandler | undefined;
     const boundMarkerClicks = new WeakSet<AMapMarker>();
+    const mappingFailedMarkers = new WeakSet<AMapMarker>();
     const markerByPlaceId = markerByPlaceIdRef.current;
 
     const notifyViewport = () => {
@@ -241,7 +249,7 @@ export function DynamicMapAdapter({
       window.clearTimeout(viewportTimer);
       viewportTimer = window.setTimeout(() => {
         const viewport = map ? viewportFromMap(map) : null;
-        if (viewport) callbacksRef.current.onViewportSettled?.(viewport);
+      if (viewport) callbacksRef.current.onViewportSettled?.(viewport);
       }, 120);
     };
 
@@ -249,7 +257,11 @@ export function DynamicMapAdapter({
       if (disposed || !map) return;
       window.clearTimeout(completeTimer);
       const inset = paddingRef.current;
-      if (latestPinsRef.current.length) fitMapToPins(map, latestPinsRef.current, inset);
+      applyMapPadding(map, inset);
+      if (restoreViewportRef.current) {
+        const restored = restoreViewportRef.current;
+        map.setZoomAndCenter?.(restored.zoom, [restored.center.longitude, restored.center.latitude]);
+      } else if (latestPinsRef.current.length) fitMapToPins(map, latestPinsRef.current, inset);
       callbacksRef.current.onReady?.();
       notifyViewport();
     };
@@ -289,10 +301,30 @@ export function DynamicMapAdapter({
         mapClickHandler = (...args: unknown[]) => {
           const event = asObject(args[0]);
           const target = asObject(event?.target);
+          const domTarget = typeof EventTarget !== "undefined" && event?.target instanceof EventTarget ? event.target : null;
+          if (domTarget instanceof HTMLElement && domTarget.closest(".foodprint-map-pin")) return;
           if (target && (typeof target.getExtData === "function" || Array.isArray(asObject(target.extData)?.clusterPlaceIds))) return;
           callbacksRef.current.onClearSelection?.();
         };
         map.on("click", mapClickHandler);
+
+        const reportPinMappingFailure = (marker: AMapMarker) => {
+          if (mappingFailedMarkers.has(marker)) return;
+          mappingFailedMarkers.add(marker);
+          marker.setMap?.(null);
+          reportClientMetric("map_pin_mapping_failed", 1, "error", { outcome: "error" });
+          notifyFatal(mapFailure("runtime", "pin_mapping_failed", false));
+        };
+
+        const resolveMarkerIndex = (context: ClusterContext, marker: AMapMarker) => {
+          const position = positionToLngLat(marker.getPosition?.());
+          const values = [context.data, context.marker, marker.getExtData?.()];
+          for (const value of values) {
+            const index = resolveMapPlaceIndex(value, latestPinsRef.current, coordinateBucketsRef.current, position);
+            if (index !== null) return index;
+          }
+          return null;
+        };
 
         const markerOptions = {
           gridSize: 64,
@@ -301,15 +333,18 @@ export function DynamicMapAdapter({
             const context = readClusterContext(rawContext);
             const marker = markerList(context.marker)[0];
             if (!marker) return;
-            const index = readPlaceIndex(context.data) ?? readPlaceIndex(marker.getExtData?.());
+            const index = resolveMarkerIndex(context, marker);
             const place = index === null ? undefined : latestPinsRef.current[index];
-            if (!place) return;
+            if (!place) {
+              reportPinMappingFailure(marker);
+              return;
+            }
             const selected = place.id === selectedPlaceIdRef.current;
             const level = toMapPinRecommendationLevel(place.bowlStrength);
             marker.setContent?.(createMapPinElement({ level, selected, accessibleLabel: `查看 ${place.name}` }));
             const pinOffset = mapPinPixelOffset(selected ? 48 : 40, selected ? 54 : 45);
             marker.setOffset?.(new amap.Pixel(pinOffset.x, pinOffset.y));
-            marker.setExtData?.({ placeIndex: index, placeId: place.id });
+            marker.setExtData?.({ foodprintMapPin: true, placeIndex: index, placeId: place.id });
             marker.setZIndex?.(selected ? 300 : 100 + level);
             markerByPlaceIdRef.current.set(place.id, marker);
             if (!boundMarkerClicks.has(marker)) {
@@ -327,12 +362,12 @@ export function DynamicMapAdapter({
             marker.setContent?.(createMapClusterElement({ count, active: selected }));
             const clusterOffset = mapPinPixelOffset(selected ? 48 : 44, selected ? 54 : 50);
             marker.setOffset?.(new amap.Pixel(clusterOffset.x, clusterOffset.y));
-            marker.setExtData?.({ clusterPlaceIds: placeIds });
+            marker.setExtData?.({ foodprintMapCluster: true, clusterPlaceIds: placeIds });
           },
         };
         clusterRef.current = new amap.MarkerCluster(map, [], markerOptions);
         clusterClickHandler = (rawEvent: unknown) => {
-          const context = readClusterContext(rawEvent);
+          const context = readClusterEventContext(rawEvent);
           const clusterMarker = markerList(context.marker)[0];
           const currentZoom = map?.getZoom?.();
           if (currentZoom !== undefined && currentZoom < 17 && map?.setZoomAndCenter) {
@@ -346,17 +381,28 @@ export function DynamicMapAdapter({
           if (ids.length > 0) callbacksRef.current.onClusterOpened?.(ids);
           else if (map?.getZoom && map.setZoomAndCenter && map.getCenter) {
             const center = positionToLngLat(map.getCenter());
-            if (center) map.setZoomAndCenter(Math.min(18, map.getZoom() + 2), [center.longitude, center.latitude]);
+            if (center && map.getZoom() < 18) map.setZoomAndCenter(Math.min(18, map.getZoom() + 2), [center.longitude, center.latitude]);
+            else {
+              reportClientMetric("map_pin_mapping_failed", 1, "error", { outcome: "error" });
+              notifyFatal(mapFailure("runtime", "pin_mapping_failed", false));
+            }
+          } else {
+            reportClientMetric("map_pin_mapping_failed", 1, "error", { outcome: "error" });
+            notifyFatal(mapFailure("runtime", "pin_mapping_failed", false));
           }
         };
         clusterRef.current.on?.("click", clusterClickHandler);
-        clusterRef.current.setData(latestPinsRef.current.map((place, placeIndex) => ({
-          lnglat: [place.longitude, place.latitude],
-          weight: Math.max(1, place.bowlStrength ?? 1),
-          placeIndex,
-          extData: { placeIndex, placeId: place.id },
+        clusterRef.current.setData(createMapPinData(latestPinsRef.current).map((data) => ({
+          ...data,
+          weight: 1,
         })));
-        fitMapToPins(map, latestPinsRef.current, paddingRef.current);
+        applyMapPadding(map, paddingRef.current);
+        if (restoreViewportRef.current) {
+          const restored = restoreViewportRef.current;
+          map.setZoomAndCenter?.(restored.zoom, [restored.center.longitude, restored.center.latitude]);
+        } else {
+          fitMapToPins(map, latestPinsRef.current, paddingRef.current);
+        }
         window.clearTimeout(completeTimer);
         completeTimer = window.setTimeout(() => {
           notifyFatal(mapFailure("map_complete", "complete_timeout"));
@@ -388,11 +434,9 @@ export function DynamicMapAdapter({
     const cluster = clusterRef.current;
     if (!cluster) return;
     markerByPlaceIdRef.current.clear();
-    cluster.setData(latestPinsRef.current.map((place, placeIndex) => ({
-      lnglat: [place.longitude, place.latitude],
-      weight: Math.max(1, place.bowlStrength ?? 1),
-      placeIndex,
-      extData: { placeIndex, placeId: place.id },
+    cluster.setData(createMapPinData(latestPinsRef.current).map((data) => ({
+      ...data,
+      weight: 1,
     })));
   }, [pinSignature]);
 
@@ -419,6 +463,7 @@ export function DynamicMapAdapter({
     const map = mapRef.current;
     if (!map || !fitRequestKey) return;
     const inset = paddingRef.current;
+    applyMapPadding(map, inset);
     fitMapToPins(map, latestPinsRef.current, inset);
   }, [fitRequestKey]);
 
@@ -426,8 +471,16 @@ export function DynamicMapAdapter({
     const map = mapRef.current;
     if (!map || !latestPinsRef.current.length) return;
     const inset = { top: paddingTop, right: paddingRight, bottom: paddingBottom, left: paddingLeft };
-    fitMapToPins(map, latestPinsRef.current, inset);
+    applyMapPadding(map, inset);
+    if (!restoreViewportRef.current) fitMapToPins(map, latestPinsRef.current, inset);
   }, [paddingBottom, paddingLeft, paddingRight, paddingTop]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !restoreViewport) return;
+    applyMapPadding(map, paddingRef.current);
+    map.setZoomAndCenter?.(restoreViewport.zoom, [restoreViewport.center.longitude, restoreViewport.center.latitude]);
+  }, [restoreViewport, restoreViewport?.center.latitude, restoreViewport?.center.longitude, restoreViewport?.zoom]);
 
   useEffect(() => {
     const selected = selectedPlaceIdRef.current;

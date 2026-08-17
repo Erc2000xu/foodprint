@@ -101,7 +101,7 @@ export function PrivatePhoto({ src, photoId, alt, width, height, className, prio
   const safeWidth = width && width > 0 ? width : 1;
   const safeHeight = height && height > 0 ? height : 1;
   return <figure className={`private-photo ${className ?? ""}${state === "loaded" ? " private-photo--loaded" : ""}`} style={{ aspectRatio: `${safeWidth} / ${safeHeight}` }}>
-    {state !== "loaded" && <span className="private-photo__placeholder" aria-hidden="true">照片加载中…</span>}
+    {state !== "loaded" && <span className="private-photo__placeholder" aria-hidden="true">{state === "error" ? "照片暂时无法加载" : "照片加载中…"}</span>}
     <img key={`${currentSrc}-${retryNonce}`} ref={imageRef} src={currentSrc} alt={decorative ? "" : alt} width={safeWidth} height={safeHeight} loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : "auto"} onError={onError} />
     {state === "error" && <button className="private-photo__retry" type="button" onClick={retry}>重新加载照片</button>}
   </figure>;

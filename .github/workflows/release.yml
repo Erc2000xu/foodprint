@@ -56,6 +56,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require the confirmed ICP record
+        run: npm run verify:icp -- --required
       - name: Validate release candidate
         run: npm run check
 
@@ -78,7 +80,7 @@ jobs:
       - verify-release-candidate
       - verify-migration-integrity
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 35
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -98,7 +100,7 @@ jobs:
         shell: bash
         run: |
           failed=0
-          for setting in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID TENCENT_HOST TENCENT_DEPLOY_USER TENCENT_SSH_PRIVATE_KEY TENCENT_KNOWN_HOSTS PRODUCTION_NEXT_PUBLIC_SUPABASE_URL PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; do
+          for setting in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID TENCENT_HOST TENCENT_DEPLOY_USER TENCENT_SSH_PRIVATE_KEY TENCENT_KNOWN_HOSTS PRODUCTION_NEXT_PUBLIC_SUPABASE_URL PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY PRODUCTION_NEXT_PUBLIC_ICP_RECORD; do
             if [ -z "${!setting}" ]; then
               echo "::error::Missing repository secret or variable: ${setting}"
               failed=1
@@ -174,9 +176,7 @@ jobs:
         run: |
           ssh -p "$TENCENT_PORT" "$TENCENT_DEPLOY_USER@$TENCENT_HOST" \
             'mkdir -p /opt/foodprint/incoming && chmod 0750 /opt/foodprint/incoming'
-          rsync --archive --partial --info=progress2 --timeout=60 \
-            -e "ssh -p $TENCENT_PORT" \
-            "$RELEASE_BUNDLE" \
+          scp -P "$TENCENT_PORT" "$RELEASE_BUNDLE" \
             "$TENCENT_DEPLOY_USER@$TENCENT_HOST:/opt/foodprint/incoming/$RELEASE_BUNDLE"
 
       - name: Install release on Tencent Cloud

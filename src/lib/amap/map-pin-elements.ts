@@ -27,6 +27,7 @@ function createMarkerRoot(className: string, accessibleLabel: string) {
   root.type = "button";
   root.className = className;
   root.setAttribute("aria-label", accessibleLabel);
+  root.addEventListener("click", (event) => event.stopPropagation());
   return root;
 }
 

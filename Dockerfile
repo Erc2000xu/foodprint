@@ -25,6 +25,7 @@ ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL} \
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN node scripts/verify-icp-record.mjs --required
 RUN npm run build
 
 FROM base AS runner
