@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Installed once as root on the Tencent Cloud host. GitHub Actions uploads a
+# validated release bundle as the restricted `deploy` user, then invokes this
+# helper through sudo. It never accepts arbitrary shell commands.
+
+readonly base_dir="/opt/foodprint"
+readonly incoming_dir="${base_dir}/incoming"
+readonly releases_dir="${base_dir}/releases"
+readonly current_link="${base_dir}/current"
+readonly previous_link="${base_dir}/previous"
+readonly nginx_http_target="/etc/nginx/conf.d/foodprint-http.conf"
+readonly nginx_site_target="/etc/nginx/sites-available/foodprint.conf"
+readonly nginx_site_link="/etc/nginx/sites-enabled/foodprint.conf"
+readonly service_name="foodprint-compose.service"
+readonly production_env_file="/etc/foodprint/production.env"
+
+fail() {
+  echo "foodprint-install-release: $*" >&2
+  exit 1
+}
+
+if [[ $# -eq 1 && "$1" == "--check" ]]; then
+  [[ "$(id -u)" -eq 0 ]] || fail "--check must run as root"
+  [[ -x /usr/bin/docker ]] || fail "docker is not installed at /usr/bin/docker"
+  [[ -x /usr/sbin/nginx ]] || fail "nginx is not installed at /usr/sbin/nginx"
+  [[ -x /usr/bin/systemctl ]] || fail "systemctl is not installed at /usr/bin/systemctl"
+  [[ -r "$production_env_file" ]] || fail "missing ${production_env_file}"
+  for required_name in \
+    NEXT_PUBLIC_APP_URL \
+    NEXT_PUBLIC_MAP_PROVIDER \
+    NEXT_PUBLIC_SUPABASE_URL \
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
+    AMAP_JS_KEY \
+    AMAP_SECURITY_KEY \
+    DISCOVERY_DYNAMIC_MAP_ENABLED \
+    INVITATION_TOKEN_ENCRYPTION_KEY \
+    SUPABASE_SERVICE_ROLE_KEY \
+    STORAGE_PROVIDER; do
+    grep -Eq "^${required_name}=(\"[^\"]+\"|'[^']+'|[^[:space:]#]+)" "$production_env_file" \
+      || fail "missing or empty ${required_name} in ${production_env_file}"
+  done
+  systemctl cat "$service_name" >/dev/null 2>&1 || fail "missing systemd unit ${service_name}"
+  nginx -t >/dev/null || fail "current Nginx configuration is invalid"
+  [[ -d "$incoming_dir" && -w "$incoming_dir" && -x "$incoming_dir" ]] || fail "${incoming_dir} must be writable"
+  [[ "$(stat -c '%U' "$incoming_dir")" == "deploy" ]] || fail "${incoming_dir} must be owned by deploy"
+  echo "foodprint release target is ready"
+  exit 0
+fi
+
+if [[ $# -ne 2 ]]; then
+  fail "usage: foodprint-install-release <40-char-commit-sha> <incoming-bundle-path>"
+fi
+
+release_sha="$1"
+bundle_path="$2"
+
+[[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || fail "invalid release SHA"
+[[ "$bundle_path" == "${incoming_dir}/"* ]] || fail "bundle must be inside ${incoming_dir}"
+[[ -f "$bundle_path" ]] || fail "release bundle does not exist"
+
+release_dir="${releases_dir}/${release_sha}"
+temporary_release_dir="${release_dir}.tmp.$$"
+backup_dir="${base_dir}/backups/${release_sha}"
+archive_listing="$(mktemp)"
+install -d -m 0750 "$incoming_dir"
+install -d -m 0755 "$releases_dir" "$backup_dir"
+[[ ! -e "$release_dir" ]] || fail "release already exists: ${release_sha}"
+
+expected_entries=(
+  "foodprint-image.tar"
+  "deploy/compose.production.yml"
+  "deploy/nginx/foodprint-http.conf"
+  "deploy/nginx/foodprint.conf"
+)
+
+cleanup_temporary() {
+  rm -f "$archive_listing"
+  rm -rf "$temporary_release_dir"
+}
+trap cleanup_temporary EXIT
+
+if ! tar -tzf "$bundle_path" >"$archive_listing"; then
+  fail "could not read release bundle"
+fi
+
+while IFS= read -r entry; do
+  case "$entry" in
+    foodprint-image.tar|deploy/compose.production.yml|deploy/nginx/foodprint-http.conf|deploy/nginx/foodprint.conf) ;;
+    *) fail "unexpected path in release bundle: ${entry}" ;;
+  esac
+done < "$archive_listing"
+
+for entry in "${expected_entries[@]}"; do
+  grep -Fqx "$entry" "$archive_listing" || fail "missing ${entry} in release bundle"
+done
+
+mkdir -p "$temporary_release_dir"
+tar --extract --gzip --file "$bundle_path" --directory "$temporary_release_dir" --no-same-owner --no-same-permissions
+mv "$temporary_release_dir" "$release_dir"
+
+if ! docker load --input "$release_dir/foodprint-image.tar" >/dev/null; then
+  rm -rf "$release_dir"
+  fail "docker could not load the release image"
+fi
+if ! docker image inspect "foodprint:${release_sha}" >/dev/null 2>&1; then
+  rm -rf "$release_dir"
+  fail "loaded image foodprint:${release_sha} was not found"
+fi
+rm -f "$release_dir/foodprint-image.tar"
+
+cat >"$release_dir/.deployment.env" <<EOF
+FOODPRINT_IMAGE=foodprint:${release_sha}
+DEPLOYMENT_VERSION=${release_sha}
+FOODPRINT_ENV_FILE=/etc/foodprint/production.env
+EOF
+chmod 0644 "$release_dir/.deployment.env"
+chown -R root:root "$release_dir"
+
+backup_if_present() {
+  local source_path="$1"
+  local backup_path="$2"
+  if [[ -e "$source_path" || -L "$source_path" ]]; then
+    cp -a "$source_path" "$backup_path"
+  else
+    touch "${backup_path}.absent"
+  fi
+}
+
+restore_path() {
+  local target_path="$1"
+  local backup_path="$2"
+  rm -f "$target_path"
+  if [[ -e "${backup_path}.absent" ]]; then
+    return 0
+  fi
+  [[ -e "$backup_path" || -L "$backup_path" ]] || return 0
+  cp -a "$backup_path" "$target_path"
+}
+
+mkdir -p "$(dirname "$nginx_http_target")" "$(dirname "$nginx_site_target")" "$(dirname "$nginx_site_link")"
+backup_if_present "$nginx_http_target" "$backup_dir/http.conf"
+backup_if_present "$nginx_site_target" "$backup_dir/site.conf"
+backup_if_present "$nginx_site_link" "$backup_dir/site.link"
+
+install -m 0644 "$release_dir/deploy/nginx/foodprint-http.conf" "$nginx_http_target"
+install -m 0644 "$release_dir/deploy/nginx/foodprint.conf" "$nginx_site_target"
+ln -sfn "$nginx_site_target" "$nginx_site_link"
+if ! nginx -t; then
+  restore_path "$nginx_http_target" "$backup_dir/http.conf"
+  restore_path "$nginx_site_target" "$backup_dir/site.conf"
+  restore_path "$nginx_site_link" "$backup_dir/site.link"
+  rm -rf "$release_dir"
+  fail "nginx configuration rejected the release"
+fi
+
+previous_release=""
+if [[ -L "$current_link" ]]; then
+  previous_release="$(readlink -f "$current_link")"
+elif [[ -d "$current_link" ]]; then
+  previous_release="${releases_dir}/legacy-$(date -u +%Y%m%d%H%M%S)"
+  mv "$current_link" "$previous_release"
+fi
+
+switch_to() {
+  local target="$1"
+  ln -s "$target" "${current_link}.next.$$"
+  mv -Tf "${current_link}.next.$$" "$current_link"
+}
+
+rollback() {
+  if [[ -n "$previous_release" && -d "$previous_release" ]]; then
+    switch_to "$previous_release"
+    systemctl restart "$service_name" || true
+  else
+    systemctl stop "$service_name" || true
+  fi
+  restore_path "$nginx_http_target" "$backup_dir/http.conf"
+  restore_path "$nginx_site_target" "$backup_dir/site.conf"
+  restore_path "$nginx_site_link" "$backup_dir/site.link"
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx || true
+}
+
+switch_to "$release_dir"
+if [[ -n "$previous_release" ]]; then
+  ln -sfn "$previous_release" "$previous_link"
+else
+  rm -f "$previous_link"
+fi
+if ! systemctl restart "$service_name"; then
+  rollback
+  rm -rf "$release_dir"
+  fail "application service failed to restart"
+fi
+
+healthy=0
+for _ in $(seq 1 30); do
+  if curl --fail --silent --show-error --max-time 3 http://127.0.0.1:3000/api/health >/dev/null; then
+    healthy=1
+    break
+  fi
+  sleep 2
+done
+if [[ "$healthy" -ne 1 ]]; then
+  rollback
+  rm -rf "$release_dir"
+  fail "application health check failed"
+fi
+
+if ! systemctl reload nginx; then
+  rollback
+  rm -rf "$release_dir"
+  fail "nginx reload failed"
+fi
+
+rm -f "$bundle_path"
+echo "foodprint release ${release_sha} is active"

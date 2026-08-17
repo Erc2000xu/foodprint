@@ -7,6 +7,7 @@ import { BowlIcon, toBowlLevel } from "@/components/recommendation/bowl-icon";
 import { GoodAtIcon, goodAtOptions, isGoodAtSlug } from "@/components/recommendation/good-at-icon";
 import { getActiveGroupContext } from "@/lib/auth/active-group-context";
 import { createClient } from "@/lib/supabase/server";
+import { selectPhotoResource } from "@/lib/photos/photo-resource";
 
 type VisitFeedItem = { visit_record_id: string; group_place_id: string; place_name: string; visited_on: string | null; strength: number; tags: string[]; note: string | null; dishes: string[]; created_at: string; display_name: string; thumbnail_object_keys?: string[] };
 type SignedPhoto = { url: string; width: number; height: number; photoId?: string };
@@ -30,16 +31,20 @@ export default async function ActivityPage() {
   const visibleVisits = (visits ?? []).slice(0, 20);
   const visitIds = visibleVisits.map((visit) => visit.visit_record_id);
   const photoRows = visitIds.length
-    ? await supabase.from("photos").select("id, visit_record_id, thumbnail_object_key, thumbnail_width, thumbnail_height").in("visit_record_id", visitIds).is("deleted_at", null).is("hidden_at", null).not("thumbnail_object_key", "is", null).order("sort_order").limit(40)
+    ? await supabase.from("photos").select("id, visit_record_id, object_key, width, height, thumbnail_object_key, thumbnail_width, thumbnail_height").in("visit_record_id", visitIds).is("deleted_at", null).is("hidden_at", null).order("sort_order").limit(40)
     : { data: [] };
-  const keys = visibleVisits.flatMap((visit) => visit.thumbnail_object_keys ?? []).concat((photoRows.data ?? []).map((photo) => photo.thumbnail_object_key).filter((key): key is string => Boolean(key)));
+  const photoResources = (photoRows.data ?? []).flatMap((photo) => {
+    const resource = selectPhotoResource(photo);
+    return resource ? [{ photo, resource }] : [];
+  });
+  const keys = visibleVisits.flatMap((visit) => visit.thumbnail_object_keys ?? []).concat(photoResources.map(({ resource }) => resource.key));
   const uniqueKeys = [...new Set(keys)];
   const signed = uniqueKeys.length ? await supabase.storage.from("place-photos").createSignedUrls(uniqueKeys, 60 * 15) : { data: [] };
   const signedByPath = new Map((signed.data ?? []).map((photo) => [photo.path, photo.signedUrl]));
-  const dimensionsByKey = new Map((photoRows.data ?? []).map((photo) => [photo.thumbnail_object_key, { width: Number(photo.thumbnail_width ?? 1), height: Number(photo.thumbnail_height ?? 1) }]));
+  const dimensionsByKey = new Map(photoResources.map(({ resource }) => [resource.key, { width: Number(resource.width ?? 1), height: Number(resource.height ?? 1) }]));
   const photosByVisit = new Map<string, SignedPhoto[]>();
   visibleVisits.forEach((visit) => {
-    const rowPhotos = (photoRows.data ?? []).filter((photo) => photo.visit_record_id === visit.visit_record_id).map((photo) => ({ photoId: photo.id, url: signedByPath.get(photo.thumbnail_object_key as string), width: Number(photo.thumbnail_width ?? 1), height: Number(photo.thumbnail_height ?? 1) })).filter((photo): photo is { photoId: string; url: string; width: number; height: number } => Boolean(photo.url));
+    const rowPhotos = photoResources.filter(({ photo }) => photo.visit_record_id === visit.visit_record_id).map(({ photo, resource }) => ({ photoId: photo.id, url: signedByPath.get(resource.key), width: Number(resource.width ?? 1), height: Number(resource.height ?? 1) })).filter((photo): photo is { photoId: string; url: string; width: number; height: number } => Boolean(photo.url));
     const rpcPhotos = (visit.thumbnail_object_keys ?? []).map((key) => ({ url: signedByPath.get(key), ...(dimensionsByKey.get(key) ?? { width: 1, height: 1 }) })).filter((photo): photo is SignedPhoto => Boolean(photo.url));
     photosByVisit.set(visit.visit_record_id, (rowPhotos.length ? rowPhotos : rpcPhotos).slice(0, 2));
   });

@@ -3,3 +3,4 @@
 deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart foodprint-compose.service
 deploy ALL=(root) NOPASSWD: /usr/bin/systemctl status foodprint-compose.service
 deploy ALL=(root) NOPASSWD: /usr/bin/systemctl is-active foodprint-compose.service
+deploy ALL=(root) NOPASSWD: /usr/local/sbin/foodprint-install-release *

@@ -1,6 +1,6 @@
 # 食迹 Foodprint
 
-由朋友共同维护、只收录真实体验和真实推荐的餐饮地点地图。V1 以北京为首发城市，提供列表优先的结构化检索；静态地图与列表共享 URL 筛选状态，并为未来互动地图保留 Adapter 接口。
+由朋友共同维护、只收录真实体验和真实推荐的餐饮地点地图。V1 以北京为首发城市，V2.3 发现页默认使用可拖动的动态地图；动态地图、当前范围抽屉和完整列表共享同一组已授权推荐地点，地图故障直接切换列表。
 
 项目的长期起源、产品目标、部署路线和不可忽略的约束见 [项目背景与长期约束](docs/PROJECT_CONTEXT.md)；当前 V1.1 的交接与发布状态见 [V1.1 状态交接](docs/FOODPRINT_V1_1_STATUS_HANDOFF_2026-07-24.md)。
 
@@ -35,7 +35,7 @@ npm install
 npm run dev
 ```
 
-不要把 `.env.local`、高德安全密钥、Supabase Service Role Key 或数据库密码提交到 Git。当前骨架即使未填写真实密钥也可以启动；地图区域会显示明确的 Phase 0 占位说明。
+不要把 `.env.local`、高德安全密钥、Supabase Service Role Key 或数据库密码提交到 Git。`DISCOVERY_DYNAMIC_MAP_ENABLED=false` 或缺少 `AMAP_JS_KEY` 时不会下发 JS Key、加载地图 SDK 或请求静态地图，发现页直接使用完整列表。
 
 ## 质量检查
 
@@ -54,7 +54,8 @@ npm run build
 | --- | --- | --- |
 | `NEXT_PUBLIC_APP_URL` | 应用 URL 与认证回调基址 | 浏览器可见 |
 | `NEXT_PUBLIC_MAP_PROVIDER` | 当前固定为 `amap` | 浏览器可见 |
-| `NEXT_PUBLIC_AMAP_KEY` | 高德 Web JS Key | 浏览器可见，须绑定域名 |
+| `AMAP_JS_KEY` | 高德 Web JS Key；仅在动态地图开启且完整索引可用时由 Server Component 下发 | 服务端运行时配置，须绑定域名 |
+| `DISCOVERY_DYNAMIC_MAP_ENABLED` | 动态地图运行开关；生产正常为 `true`，故障或配额风险时设为 `false` | 仅服务端 |
 | `AMAP_SECURITY_KEY` | 高德 JS 安全密钥 | 仅服务端 |
 | `AMAP_WEBSERVICE_KEY` | 高德 Web 服务 Key，用于地点搜索 | 只保存于 Supabase Edge Function Secret；不设 `NEXT_PUBLIC_` |
 | `INVITATION_TOKEN_ENCRYPTION_KEY` | 加密保存仍有效的邀请 token，便于 Owner/Admin 刷新后重新复制链接 | 仅 Vercel/受控服务端；随机值至少 32 字符，绝不提交 |
@@ -83,9 +84,9 @@ Foodprint 中长期只使用高德开放平台免费版在当前主体、用途�
 
 ## 当前部署要点
 
-1. 在腾讯云生产环境配置 Supabase 公共变量及高德 JS Key / JS 安全密钥；不要把高德 Web 服务 Key 放到浏览器。Vercel 仅作为过渡期回滚环境保留。
-2. 在 Supabase Edge Function Secrets 中配置 `AMAP_WEBSERVICE_KEY` 与 `APP_ALLOWED_ORIGINS`，然后同时部署 `amap-poi-search` 和 `amap-static-map`。`APP_ALLOWED_ORIGINS` 只填写精确的生产/本地地址；地点搜索与静态地图均经这些函数调用高德，避免公开 Web 服务 Key。
-3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。先提交 migration 并通过 CI；项目负责人手动批准后，GitHub Actions 才依序应用到 production。当前腾讯云应用发布仍是本轮迁移期间的人工例外，后续应由 GitHub Actions 接管；不得在生产 SQL Editor 粘贴常规 migration，也不得从本机临时执行 `db push`。
+1. 在腾讯云生产环境配置 Supabase 公共变量、`AMAP_JS_KEY`、`AMAP_SECURITY_KEY` 和 `DISCOVERY_DYNAMIC_MAP_ENABLED`；不要把高德 Web 服务 Key 或 JS 安全密钥放到浏览器。Vercel 仅作为过渡期回滚环境保留。
+2. 在 Supabase Edge Function Secrets 中配置 `AMAP_WEBSERVICE_KEY` 与 `APP_ALLOWED_ORIGINS`，部署地点检索函数；动态地图 JS API 走 Next.js 同源 `/api/amap/_AMapService/` 代理，不使用静态地图。
+3. 所有数据库结构、RLS 与 RPC 都通过 `supabase/migrations/` 管理。先提交 migration 并通过 CI；项目负责人手动批准后，GitHub Actions 才依序应用到 production，并按 [`deploy/README.md`](deploy/README.md) 的腾讯云发布流程部署 commit SHA 镜像。不得在生产 SQL Editor 粘贴常规 migration，也不得从本机临时执行 `db push`。
 4. 首个 Owner 可由受控脚本初始化；邀请链接只由 Owner 生成。
 5. PWA 不需要额外密钥：生产环境会自动注册 `/service-worker.js`。图标、manifest、离线页和安装引导已经内置。
 6. Owner 的全量 JSON 导出需要受控生产环境中的 `SUPABASE_SERVICE_ROLE_KEY`；该 key 不会发送到浏览器。

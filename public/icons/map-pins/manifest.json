@@ -1,0 +1,42 @@
+{
+  "assetVersion": "v2.3.0",
+  "approvedDirection": "B-dining-plate-pin",
+  "approvedOn": "2026-08-13",
+  "pinViewBox": [0, 0, 64, 72],
+  "pinAnchor": { "x": 32, "y": 72, "normalizedX": 0.5, "normalizedY": 1 },
+  "clusterCountCenter": { "x": 32, "y": 30, "normalizedX": 0.5, "normalizedY": 0.416667 },
+  "renderSize": {
+    "default": { "width": 40, "height": 45 },
+    "selected": { "width": 48, "height": 54 },
+    "cluster": { "width": 44, "height": 50 },
+    "clusterActive": { "width": 48, "height": 54 },
+    "userLocation": { "width": 32, "height": 32 }
+  },
+  "minimumHitTarget": 44,
+  "palette": {
+    "primary": "#167D76",
+    "primaryStrong": "#0D5D58",
+    "surfaceWarm": "#FFF8E8",
+    "accent": "#ED7655",
+    "locationBlue": "#2563EB"
+  },
+  "assets": {
+    "level1": {
+      "default": "/icons/map-pins/pin-level-1-default.svg",
+      "selected": "/icons/map-pins/pin-level-1-selected.svg"
+    },
+    "level2": {
+      "default": "/icons/map-pins/pin-level-2-default.svg",
+      "selected": "/icons/map-pins/pin-level-2-selected.svg"
+    },
+    "level3": {
+      "default": "/icons/map-pins/pin-level-3-default.svg",
+      "selected": "/icons/map-pins/pin-level-3-selected.svg"
+    },
+    "cluster": {
+      "default": "/icons/map-pins/cluster-default.svg",
+      "active": "/icons/map-pins/cluster-active.svg"
+    },
+    "userLocation": "/icons/map-pins/user-location.svg"
+  }
+}

@@ -4,7 +4,7 @@
 
 ## 标准发布管道
 
-GitHub 是代码与发布历史的唯一事实来源。代码、migration 和 Edge Function 先经工作分支、PR 与 CI，再合入 `main`；Supabase production 的数据库/函数发布继续遵循 [RELEASE_SOP.md](RELEASE_SOP.md)。当前腾讯云应用发布 workflow 尚未完成，本轮迁移使用了已记录的人工部署例外；后续不得把直接上传服务器当作常规流程。
+GitHub 是代码与发布历史的唯一事实来源。代码、migration 和 Edge Function 先经工作分支、PR 与 CI，再合入 `main`；Supabase production 的数据库/函数与腾讯云应用发布继续遵循 [RELEASE_SOP.md](RELEASE_SOP.md)。V2.3 的腾讯云发布 workflow 已加入本分支，启用前需完成 [`deploy/README.md`](../deploy/README.md) 中的一次性主机与凭据配置。
 
 本机不得以 `supabase db push`、SQL Editor 或 `vercel --prod` 替代受控管道。腾讯云生产也不得直接修改代码；应由 GitHub 构建带有 commit SHA 的 release，再由受限发布账户部署。自动化启用前的 migration history 对账是一次性受控工作；没有逐项对象核对，不使用 `migration repair` 或 `--include-all`。
 
@@ -55,7 +55,7 @@ GitHub 是代码与发布历史的唯一事实来源。代码、migration 和 Ed
 1. 先在本机或 GitHub CI 的干净 Supabase 数据库中依序重放 `20260724100000_v1_discovery_taxonomy.sql` 和 `20260724103000_v1_discovery_completion.sql`。
 2. 以 Owner 和普通成员分别验证：王府井/东城区/王府井站、粤菜、约会、人均和评分筛选；确认跨小组地点不会出现在结果或 `/api/v1/places/search`。
 3. 再将两条新增 migration 推至 Production。它们是只增不删的迁移，历史地点会进入“我的 → 完善地点检索信息”队列，不会被隐藏或重写。
-4. 部署应用后检查 `/api/health`、首页 URL 筛选恢复、详情页“返回结果”、静态地图失败时的列表降级，以及私有照片只以短期签名 URL 展示。
+4. 部署应用后检查 `/api/health`、首页 URL 筛选恢复、详情页“返回结果”以及私有照片只以短期签名 URL 展示。V2.3 上线时另按专项清单验证默认动态地图、拖拽 / 缩放、当前范围抽屉、故障直接进入列表和静态地图请求为 0；不得沿用历史静态地图验收。
 
 ## 腾讯云运行（V2-A 当前生产）
 
@@ -65,8 +65,8 @@ V2-A 的域名切流、私域用户治理、腾讯云防火墙、Nginx、TLS、�
 
 ### V2 当前服务器状态与配置边界
 
-截至 2026-08-06，腾讯云 Lighthouse 已完成 Ubuntu/Docker/Nginx 基线、TLS 证书安装、V2 standalone 镜像构建、`127.0.0.1:3000` 容器健康检查、DNS 切流和公开域名验收。当前生产环境已承担正式业务流量；完整角色化业务回归、7 天稳定观察、恢复演练和自动化发布仍是后续事项。
+截至 2026-08-06，腾讯云 Lighthouse 已完成 Ubuntu/Docker/Nginx 基线、TLS 证书安装、V2 standalone 镜像构建、`127.0.0.1:3000` 容器健康检查、DNS 切流和公开域名验收。当前生产环境已承担正式业务流量；V2.3 合入后的完整角色化业务回归、7 天稳定观察、恢复演练和自动化发布启用仍需按本 SOP 完成。
 
 生产环境文件应按 [`deploy/production.env.example`](../deploy/production.env.example) 创建为 `/etc/foodprint/production.env`，权限为 `0600`。`NEXT_PUBLIC_*` 值会被 Next.js 构建时内联到浏览器 bundle，因此每次这些值变化都必须重新构建镜像；服务端密钥只进入运行时环境文件，不进入 Docker build args、镜像源码或 Git。
 
-受控发布目录为 `/opt/foodprint/current`，systemd 单元为 `foodprint-compose.service`。`deploy` 账户不加入 Docker 组，只可通过 sudo 执行该单元的 `restart`、`status` 和 `is-active`；生产配置文件权限为 `0600`，不使用 `docker.sock` 给部署账户扩大 root 权限。下一轮应由 GitHub Actions 以不可变 release 部署到该目录并保留上一版回滚。
+受控发布目录为 `/opt/foodprint/current`，systemd 单元为 `foodprint-compose.service`。`deploy` 账户不加入 Docker 组，只可通过 sudo 执行该单元的 `restart`、`status`、`is-active` 和受参数校验的 `/usr/local/sbin/foodprint-install-release`；生产配置文件权限为 `0600`，不使用 `docker.sock` 给部署账户扩大 root 权限。GitHub Actions 以 commit SHA 标记的不可变 release 部署到该目录，并由安装器保留上一版回滚。

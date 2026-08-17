@@ -30,6 +30,17 @@ export const clientMetricNames = [
   "service_worker_controllerchange",
   "service_worker_update_ready",
   "pwa_reload",
+  "amap_load_started",
+  "amap_ready",
+  "amap_failed",
+  "map_pin_mapping_failed",
+  "discovery_fallback_to_list",
+  "map_pin_selected",
+  "map_cluster_opened",
+  "viewport_sheet_opened",
+  "viewport_sheet_place_opened",
+  "map_retry_clicked",
+  "map_retry_result",
 ] as const;
 
 export type ClientMetricName = (typeof clientMetricNames)[number];

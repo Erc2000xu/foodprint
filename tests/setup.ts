@@ -4,4 +4,6 @@ import { afterEach, expect } from "vitest";
 
 expect.extend(matchers);
 
+if (typeof window !== "undefined") window.scrollTo = (() => undefined) as typeof window.scrollTo;
+
 afterEach(() => cleanup());

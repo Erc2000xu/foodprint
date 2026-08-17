@@ -34,7 +34,7 @@ jobs:
             exit 1
           fi
           if [ "$RELEASE_AUTOMATION_ENABLED" != "true" ]; then
-            echo "::error::Release automation is intentionally disabled until the migration-history audit, repository secrets, and Vercel deploy hook are configured."
+            echo "::error::Set RELEASE_AUTOMATION_ENABLED=true only after the one-time release setup is complete."
             exit 1
           fi
 
@@ -42,6 +42,12 @@ jobs:
     needs: verify-release-request
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_APP_URL: https://foodprint.com.cn
+      NEXT_PUBLIC_MAP_PROVIDER: amap
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.PRODUCTION_NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      NEXT_PUBLIC_ICP_RECORD: ${{ vars.PRODUCTION_NEXT_PUBLIC_ICP_RECORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,6 +56,8 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require the confirmed ICP record
+        run: npm run verify:icp -- --required
       - name: Validate release candidate
         run: npm run check
 
@@ -72,35 +80,114 @@ jobs:
       - verify-release-candidate
       - verify-migration-integrity
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-      VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+      TENCENT_HOST: ${{ secrets.TENCENT_HOST }}
+      TENCENT_PORT: ${{ vars.TENCENT_PORT }}
+      TENCENT_DEPLOY_USER: ${{ secrets.TENCENT_DEPLOY_USER }}
+      TENCENT_SSH_PRIVATE_KEY: ${{ secrets.TENCENT_SSH_PRIVATE_KEY }}
+      TENCENT_KNOWN_HOSTS: ${{ secrets.TENCENT_KNOWN_HOSTS }}
+      PRODUCTION_NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.PRODUCTION_NEXT_PUBLIC_SUPABASE_URL }}
+      PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      PRODUCTION_NEXT_PUBLIC_ICP_RECORD: ${{ vars.PRODUCTION_NEXT_PUBLIC_ICP_RECORD }}
     steps:
       - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-      - name: Verify repository secrets
+
+      - name: Verify release credentials
         shell: bash
         run: |
           failed=0
-          for setting in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID VERCEL_DEPLOY_HOOK; do
+          for setting in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_ID TENCENT_HOST TENCENT_DEPLOY_USER TENCENT_SSH_PRIVATE_KEY TENCENT_KNOWN_HOSTS PRODUCTION_NEXT_PUBLIC_SUPABASE_URL PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY PRODUCTION_NEXT_PUBLIC_ICP_RECORD; do
             if [ -z "${!setting}" ]; then
-              echo "::error::Missing repository Actions secret: ${setting}"
+              echo "::error::Missing repository secret or variable: ${setting}"
               failed=1
             fi
           done
           exit "$failed"
+
+      - name: Configure SSH trust
+        shell: bash
+        run: |
+          eval "$(ssh-agent -s)"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$TENCENT_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          printf '%s\n' "$TENCENT_SSH_PRIVATE_KEY" | ssh-add -
+
+      - name: Preflight Tencent Cloud target before production writes
+        env:
+          TENCENT_PORT: ${{ vars.TENCENT_PORT || '22' }}
+        run: |
+          ssh -p "$TENCENT_PORT" "$TENCENT_DEPLOY_USER@$TENCENT_HOST" \
+            'sudo -n /usr/local/sbin/foodprint-install-release --check'
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
       - name: Link the production project
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
       - name: Show the production migration plan
         run: supabase db push --dry-run
       - name: Apply pending production migrations
         run: supabase db push
-      - name: Deploy Edge Functions to production
-        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_ID" --use-api
-      - name: Trigger the Vercel production deployment
-        run: curl --fail --silent --show-error --retry 2 --retry-all-errors --request POST "$VERCEL_DEPLOY_HOOK" --output /dev/null
+      - name: Deploy the production POI Edge Function
+        run: supabase functions deploy amap-poi-search --project-ref "$SUPABASE_PROJECT_ID" --use-api
+
+      - uses: docker/setup-buildx-action@v3
+      - name: Build immutable production image
+        env:
+          IMAGE_TAG: foodprint:${{ github.sha }}
+        run: |
+          docker build \
+            --load \
+            --build-arg NEXT_PUBLIC_APP_URL=https://foodprint.com.cn \
+            --build-arg NEXT_PUBLIC_MAP_PROVIDER=amap \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$PRODUCTION_NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$PRODUCTION_NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --build-arg NEXT_PUBLIC_ICP_RECORD="$PRODUCTION_NEXT_PUBLIC_ICP_RECORD" \
+            --build-arg DEPLOYMENT_VERSION="${{ github.sha }}" \
+            --tag "$IMAGE_TAG" \
+            .
+
+      - name: Package release bundle
+        env:
+          IMAGE_TAG: foodprint:${{ github.sha }}
+          RELEASE_BUNDLE: foodprint-release-${{ github.sha }}.tgz
+        run: |
+          mkdir -p release-bundle/deploy/nginx
+          docker save "$IMAGE_TAG" > release-bundle/foodprint-image.tar
+          cp deploy/compose.production.yml release-bundle/deploy/compose.production.yml
+          cp deploy/nginx/foodprint-http.conf release-bundle/deploy/nginx/foodprint-http.conf
+          cp deploy/nginx/foodprint.conf release-bundle/deploy/nginx/foodprint.conf
+          tar -czf "$RELEASE_BUNDLE" -C release-bundle \
+            foodprint-image.tar \
+            deploy/compose.production.yml \
+            deploy/nginx/foodprint-http.conf \
+            deploy/nginx/foodprint.conf
+
+      - name: Upload release bundle
+        env:
+          RELEASE_BUNDLE: foodprint-release-${{ github.sha }}.tgz
+          TENCENT_PORT: ${{ vars.TENCENT_PORT || '22' }}
+        run: |
+          ssh -p "$TENCENT_PORT" "$TENCENT_DEPLOY_USER@$TENCENT_HOST" \
+            'mkdir -p /opt/foodprint/incoming && chmod 0750 /opt/foodprint/incoming'
+          scp -P "$TENCENT_PORT" "$RELEASE_BUNDLE" \
+            "$TENCENT_DEPLOY_USER@$TENCENT_HOST:/opt/foodprint/incoming/$RELEASE_BUNDLE"
+
+      - name: Install release on Tencent Cloud
+        env:
+          RELEASE_BUNDLE: foodprint-release-${{ github.sha }}.tgz
+          TENCENT_PORT: ${{ vars.TENCENT_PORT || '22' }}
+        run: |
+          ssh -p "$TENCENT_PORT" "$TENCENT_DEPLOY_USER@$TENCENT_HOST" \
+            "sudo -n /usr/local/sbin/foodprint-install-release '${{ github.sha }}' '/opt/foodprint/incoming/$RELEASE_BUNDLE'"
+
+      - name: Verify the public production endpoint
+        run: |
+          curl --fail --silent --show-error --retry 10 --retry-delay 3 --connect-timeout 10 --max-time 20 \
+            https://foodprint.com.cn/api/health

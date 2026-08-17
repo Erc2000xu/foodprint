@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { filterDiscoveryPlaces, searchStateFromParams, searchStateToParams } from "@/lib/discovery/search-state";
-import type { MapPlace } from "@/components/map/amap-map";
+import type { DiscoveryPlace } from "@/lib/discovery/types";
 
-const places: MapPlace[] = [
-  { id: "wangfujing-cantonese", name: "王府井粤菜馆", category: "restaurant", latitude: 39.9, longitude: 116.4, averageRating: 4.8, markCount: 3, recommendCount: 3, sceneTags: ["friends_gathering", "date"], cuisineSlugs: ["cantonese"], geoEntityIds: ["wangfujing", "dongcheng", "wangfujing-station"], geoLabels: ["王府井", "东城区", "王府井站"], pricePerPerson: 168, recommendedItems: ["烧鹅"], review: "适合朋友聚餐", lastMarkedAt: "2026-07-20T00:00:00Z" },
-  { id: "sanlitun-coffee", name: "三里屯咖啡", category: "cafe", latitude: 39.93, longitude: 116.45, averageRating: 4.2, markCount: 1, recommendCount: 1, sceneTags: ["afternoon_tea"], cuisineSlugs: ["coffee_tea"], geoEntityIds: ["sanlitun", "chaoyang"], geoLabels: ["三里屯", "朝阳区"], pricePerPerson: null, recommendedItems: ["手冲"], review: "下午安静坐坐", lastMarkedAt: "2026-07-22T00:00:00Z" },
+const places: DiscoveryPlace[] = [
+  { id: "wangfujing-cantonese", name: "王府井粤菜馆", category: "restaurant", latitude: 39.9, longitude: 116.4, averageRating: 4.8, markCount: 3, recommendCount: 3, bowlStrength: 3, sceneTags: ["friends_gathering", "date"], cuisineSlugs: ["cantonese"], geoEntityIds: ["wangfujing", "dongcheng", "wangfujing-station"], geoLabels: ["王府井", "东城区", "王府井站"], pricePerPerson: 168, recommendedItems: ["烧鹅"], review: "适合朋友聚餐", lastMarkedAt: "2026-07-20T00:00:00Z" },
+  { id: "sanlitun-coffee", name: "三里屯咖啡", category: "cafe", latitude: 39.93, longitude: 116.45, averageRating: 4.2, markCount: 1, recommendCount: 1, bowlStrength: 1, sceneTags: ["afternoon_tea"], cuisineSlugs: ["coffee_tea"], geoEntityIds: ["sanlitun", "chaoyang"], geoLabels: ["三里屯", "朝阳区"], pricePerPerson: null, recommendedItems: ["手冲"], review: "下午安静坐坐", lastMarkedAt: "2026-07-22T00:00:00Z" },
 ];
 const labels = { cantonese: "粤菜", coffee_tea: "咖啡/茶饮" };
 
@@ -47,5 +47,21 @@ describe("V1 discovery SearchState", () => {
     const districtPlaces = places.map((place, index) => ({ ...place, district: index ? "北京市朝阳区" : "北京市东城区" }));
     const selected = searchStateFromParams(new URLSearchParams("locationKind=district&locationName=%E4%B8%9C%E5%9F%8E%E5%8C%BA&locationId=110101"));
     expect(filterDiscoveryPlaces(districtPlaces, selected, labels).map((place) => place.id)).toEqual(["wangfujing-cantonese"]);
+  });
+
+  it("normalizes category, cuisine and recommendation level parameters", () => {
+    const selected = searchStateFromParams(new URLSearchParams("category=restaurant,invalid,restaurant&cuisine=cantonese,invalid,cantonese&level=3,9,1,3"));
+    expect(selected.categoryIds).toEqual(["restaurant"]);
+    expect(selected.cuisineIds).toEqual(["cantonese"]);
+    expect(selected.recommendationLevels).toEqual([3, 1]);
+    expect(searchStateToParams(selected).get("category")).toBe("restaurant");
+    expect(searchStateToParams(selected).get("cuisine")).toBe("cantonese");
+    expect(searchStateToParams(selected).get("level")).toBe("3,1");
+  });
+
+  it("uses the same recommendation and category filters for map and list sets", () => {
+    const selected = searchStateFromParams(new URLSearchParams("category=cafe&level=1"));
+    const result = filterDiscoveryPlaces(places, selected, labels);
+    expect(result.map((place) => place.id)).toEqual(["sanlitun-coffee"]);
   });
 });
