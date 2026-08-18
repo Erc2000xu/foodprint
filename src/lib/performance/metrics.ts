@@ -41,6 +41,14 @@ export const clientMetricNames = [
   "viewport_sheet_place_opened",
   "map_retry_clicked",
   "map_retry_result",
+  "photo_prepare_started",
+  "photo_prepare_succeeded",
+  "photo_prepare_failed",
+  "photo_canonical_upload_failed",
+  "photo_thumbnail_deferred",
+  "photo_repair_shown",
+  "photo_repair_succeeded",
+  "photo_repair_failed",
 ] as const;
 
 export type ClientMetricName = (typeof clientMetricNames)[number];
@@ -80,6 +88,24 @@ export const clientMetricResourceTypes = ["thumbnail", "display"] as const;
 export const clientMetricLifecycleTypes = ["cold", "warm", "first_install", "update"] as const;
 export const clientMetricOutcomes = ["success", "timeout", "error"] as const;
 
+export const photoMetricReasons = [
+  "source_too_large",
+  "source_too_many_pixels",
+  "decode_unsupported",
+  "decode_failed",
+  "webp_encoder_unavailable",
+  "output_budget_unmet",
+  "request",
+  "storage",
+  "database",
+  "permission",
+  "validation",
+  "unknown",
+] as const;
+export const photoMetricSizeBuckets = ["0_1mb", "1_3mb", "3_6mb", "6_20mb", "over_20mb"] as const;
+export const photoMetricPixelBuckets = ["0_12mp", "12_24mp", "24_48mp", "over_48mp", "unknown"] as const;
+export const photoMetricDurationBuckets = ["lt_500ms", "500ms_2s", "2_10s", "over_10s"] as const;
+
 export type ClientMetricDimensions = {
   routeTemplate?: (typeof clientMetricRouteTemplates)[number];
   browserMode?: "browser" | "standalone";
@@ -87,4 +113,8 @@ export type ClientMetricDimensions = {
   resource?: (typeof clientMetricResourceTypes)[number];
   network?: (typeof clientMetricNetworkTypes)[number];
   outcome?: (typeof clientMetricOutcomes)[number];
+  reason?: (typeof photoMetricReasons)[number];
+  sizeBucket?: (typeof photoMetricSizeBuckets)[number];
+  pixelsBucket?: (typeof photoMetricPixelBuckets)[number];
+  durationBucket?: (typeof photoMetricDurationBuckets)[number];
 };

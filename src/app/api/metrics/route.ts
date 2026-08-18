@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { clientMetricDetails, clientMetricNames, clientMetricLifecycleTypes, clientMetricNetworkTypes, clientMetricOutcomes, clientMetricResourceTypes, clientMetricRouteTemplates } from "@/lib/performance/metrics";
+import { clientMetricDetails, clientMetricNames, clientMetricLifecycleTypes, clientMetricNetworkTypes, clientMetricOutcomes, clientMetricResourceTypes, clientMetricRouteTemplates, photoMetricDurationBuckets, photoMetricPixelBuckets, photoMetricReasons, photoMetricSizeBuckets } from "@/lib/performance/metrics";
 import { normalizePerformanceRoute, recordServerMetric } from "@/lib/performance/server";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +16,10 @@ const metricItem = z.object({
     resource: z.enum(clientMetricResourceTypes).optional(),
     network: z.enum(clientMetricNetworkTypes).optional(),
     outcome: z.enum(clientMetricOutcomes).optional(),
+    reason: z.enum(photoMetricReasons).optional(),
+    sizeBucket: z.enum(photoMetricSizeBuckets).optional(),
+    pixelsBucket: z.enum(photoMetricPixelBuckets).optional(),
+    durationBucket: z.enum(photoMetricDurationBuckets).optional(),
   }).strict().optional(),
 });
 const metricPayload = z.union([metricItem, z.object({ metrics: z.array(metricItem).min(1).max(20) })]);

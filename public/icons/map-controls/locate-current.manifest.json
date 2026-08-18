@@ -1,0 +1,78 @@
+{
+  "assetId": "UI-02/locate-current",
+  "version": "2.4.1",
+  "generatedOn": "2026-08-18",
+  "runtimeContract": {
+    "cssWidth": 26,
+    "cssHeight": 26,
+    "buttonMinimumWidth": 44,
+    "buttonMinimumHeight": 44,
+    "src": "/icons/map-controls/locate-current-26.png",
+    "srcSet": "/icons/map-controls/locate-current-26.png 1x, /icons/map-controls/locate-current-52.png 2x, /icons/map-controls/locate-current-78.png 3x",
+    "fallback": "/icons/map-controls/locate-current.svg"
+  },
+  "artifacts": [
+    {
+      "path": "public/icons/map-controls/locate-current-master.png",
+      "role": "transparent production master",
+      "width": 1024,
+      "height": 1024,
+      "format": "PNG",
+      "channels": 4,
+      "sha256": "d684c6c560d5ed6c995694d39decf829a7cb3c644a6ede106c4d2ceb0f3f6319"
+    },
+    {
+      "path": "public/icons/map-controls/locate-current-ui.png",
+      "role": "general UI export",
+      "width": 256,
+      "height": 256,
+      "format": "PNG",
+      "channels": 4,
+      "sha256": "4598cdec052e4ccf9f46d895dc3c4befcc2686e1a372876d60d94f7d30f17b53"
+    },
+    {
+      "path": "public/icons/map-controls/locate-current-26.png",
+      "role": "1x runtime export",
+      "width": 26,
+      "height": 26,
+      "format": "PNG",
+      "channels": 4,
+      "sha256": "8508cb4763efe012dbae3074f4f2f6b1cd98806d2e1ad36d0c25e8970bc2a34d"
+    },
+    {
+      "path": "public/icons/map-controls/locate-current-52.png",
+      "role": "2x runtime export",
+      "width": 52,
+      "height": 52,
+      "format": "PNG",
+      "channels": 4,
+      "sha256": "c9e90b02594cbb98070bd2af31eef567246bd404b22a2c6e1ba33f1e4e3a2e6b"
+    },
+    {
+      "path": "public/icons/map-controls/locate-current-78.png",
+      "role": "3x runtime export",
+      "width": 78,
+      "height": 78,
+      "format": "PNG",
+      "channels": 4,
+      "sha256": "6d0567aa3717969c1ff38c525ac18ef740ea2c6c3efac6eb9d315c3c61b47b12"
+    },
+    {
+      "path": "public/icons/map-controls/locate-current.svg",
+      "role": "deterministic vector fallback",
+      "width": 48,
+      "height": 48,
+      "format": "SVG",
+      "sha256": "a1d2268921ab1a63a8489e19a4262d3368bd3c542a71401f95e95e6253d577c0"
+    }
+  ],
+  "verification": {
+    "trueAlpha": true,
+    "cornerAlpha": [0, 0, 0, 0],
+    "centerAlpha": 255,
+    "maximumVisibleCenterDeltaPixels": 0.5,
+    "visibleChromaPixels": 0,
+    "checkedSizes": [26, 52, 78, 256, 1024],
+    "qaBoard": "docs/design/v2-4-1-location-control/qa-location-control.png"
+  }
+}
