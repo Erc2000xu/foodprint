@@ -23,4 +23,7 @@ coverage
 docs
 tests
 scripts
+!scripts/
+scripts/*
+!scripts/verify-icp-record.mjs
 supabase/.temp
