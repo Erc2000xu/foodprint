@@ -80,7 +80,9 @@ jobs:
       - verify-release-candidate
       - verify-migration-integrity
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Observed Tencent Cloud bundle uploads range from ~33 to ~88 minutes.
+    # Keep a bounded headroom for the slow path without changing the release order.
+    timeout-minutes: 120
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
