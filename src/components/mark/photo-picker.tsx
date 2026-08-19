@@ -199,13 +199,13 @@ export function PhotoPicker({
   return <section className="photo-picker" aria-label="照片上传">
     <div><strong>照片 <span className="optional-mark">可选，最多 9 张</span></strong><p>会同时生成展示图（最长边 1280px，≤600KiB）和小尺寸缩略图（最长边 640px，≤120KiB）。</p><p>上传前会压缩图片，并移除拍摄信息；预览来自最终展示图。</p></div>
     <input ref={displayInputRef} className="photo-picker__input" name="photos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void choosePhotos(selectedFiles); }} />
-    <input ref={thumbnailInputRef} className="photo-picker__input" name="photo_thumbnails" type="file" accept="image/webp" multiple tabIndex={-1} aria-hidden="true" />
+    <input ref={thumbnailInputRef} className="photo-picker__input photo-picker__input--thumbnail" name="photo_thumbnails" type="file" accept="image/webp" multiple tabIndex={-1} aria-hidden="true" />
     {entries.filter((entry) => entry.status === "ready" && entry.prepared).map((entry) => <span key={`meta-${entry.id}`}><input type="hidden" name="photo_dimensions" value={`${entry.prepared!.width}x${entry.prepared!.height}`} /><input type="hidden" name="thumbnail_dimensions" value={`${entry.prepared!.thumbnailWidth}x${entry.prepared!.thumbnailHeight}`} /></span>)}
     {processing && <p className="photo-picker__state" role="status" aria-live="polite">照片正在逐张生成两种尺寸…</p>}
     {message && <p className="photo-picker__message" role="status">{message}</p>}
     {hasBlockingFailure && <div className="photo-picker__actions"><button type="button" className="text-button" onClick={ignoreFailures}>忽略失败照片并继续</button><small>忽略后只会上传已准备好的照片。</small></div>}
     {entries.length > 0 && <div className="photo-picker__grid">{entries.map((entry) => <figure className={`photo-picker__item photo-picker__item--${entry.status}`} key={entry.id}>
-      {entry.previewUrl ? <img src={entry.previewUrl} alt="待上传照片预览" /> : <span className="photo-picker__item-state">{entry.status === "processing" ? "处理中…" : entry.failureCode ? photoPrepareFailureMessage(entry.failureCode) : "待处理"}</span>}
+      {entry.previewUrl ? <img src={entry.previewUrl} alt="待上传照片预览" /> : <span className="photo-picker__item-state">{entry.status === "processing" ? "处理中…" : entry.status === "failed" ? "处理失败" : "待处理"}</span>}
       {entry.status === "failed" && <p>{photoPrepareFailureMessage(entry.failureCode ?? "decode_failed")}</p>}
       <div className="photo-picker__item-actions">{entry.status === "failed" && <button type="button" disabled={processing} onClick={() => void prepareEntry(entry)}>重试</button>}<button type="button" onClick={() => remove(entry.id)} aria-label={`移除照片 ${entry.id}`}>移除</button></div>
     </figure>)}</div>}

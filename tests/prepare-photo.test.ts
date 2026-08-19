@@ -88,6 +88,49 @@ describe("M0/M1 photo preparation contract", () => {
     loaded.dispose();
   });
 
+  it("keeps a drawable iOS image when decode() rejects after onload", async () => {
+    const file = new File(["synthetic"], "camera.jpg", { type: "image/jpeg" });
+    vi.stubGlobal("createImageBitmap", vi.fn().mockRejectedValue(new Error("bitmap decoder unavailable")));
+    vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => "blob:photo"), revokeObjectURL: vi.fn() });
+    class MockImage {
+      naturalWidth = 2_000;
+      naturalHeight = 1_500;
+      decoding = "";
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      decode = vi.fn().mockRejectedValue(new Error("WebKit decode promise rejected"));
+      set src(_value: string) { queueMicrotask(() => this.onload?.()); }
+    }
+    vi.stubGlobal("Image", MockImage);
+
+    const loaded = await loadImage(file);
+
+    expect(loaded.width).toBe(2_000);
+    expect(loaded.height).toBe(1_500);
+    loaded.dispose();
+  });
+
+  it("falls back to a valid WebP data URL when toBlob returns a non-WebP blob", async () => {
+    const validWebpDataUrl = `data:image/webp;base64,${btoa(String.fromCharCode(...webpHeader))}`;
+    const createElement = vi.spyOn(document, "createElement").mockImplementation((tagName: string) => {
+      if (tagName !== "canvas") return document.createElementNS("http://www.w3.org/1999/xhtml", tagName) as unknown as HTMLElement;
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext: () => ({ imageSmoothingEnabled: false, imageSmoothingQuality: "low", drawImage: vi.fn() }),
+        toBlob: (callback: BlobCallback) => callback(fakeBlob("image/png", new Uint8Array([1, 2, 3]))),
+        toDataURL: () => validWebpDataUrl,
+      } as unknown as HTMLCanvasElement;
+      return canvas;
+    });
+    const image = { source: {} as CanvasImageSource, width: 1_000, height: 800, dispose: vi.fn() };
+
+    const rendered = await renderWebp(image, "data-url-fallback", 1_280, 720, 600 * 1024, 0.8);
+
+    expect(rendered.file.type).toBe("image/webp");
+    expect(createElement).toHaveBeenCalled();
+  });
+
   it("rejects a non-WebP canvas fallback instead of relabeling it", async () => {
     installCanvas(() => fakeBlob("image/png", new Uint8Array([1, 2, 3])));
     const image = { source: {} as CanvasImageSource, width: 1_000, height: 800, dispose: vi.fn() };

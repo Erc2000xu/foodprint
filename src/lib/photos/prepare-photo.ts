@@ -119,7 +119,10 @@ function imageElementSource(file: File) {
         finish();
         return;
       }
-      void image.decode().then(finish).catch(() => fail(new PhotoPrepareError("decode_failed")));
+      // WebKit can report a rejected decode() promise after onload for HEIF
+      // and large camera images even though the image element is drawable.
+      // Let finish() make the final decision from naturalWidth/naturalHeight.
+      void image.decode().then(finish).catch(finish);
     };
     image.onerror = () => fail(new PhotoPrepareError(isHeic(file) ? "decode_unsupported" : "decode_failed"));
     image.src = sourceUrl;
@@ -163,11 +166,61 @@ function isWebpMagic(bytes: Uint8Array) {
 }
 
 async function hasWebpMagic(blob: Blob) {
-  return isWebpMagic(new Uint8Array(await blob.slice(0, 12).arrayBuffer()));
+  const header = blob.slice(0, 12);
+  if (typeof header.arrayBuffer === "function") return isWebpMagic(new Uint8Array(await header.arrayBuffer()));
+  if (typeof FileReader !== "function") return false;
+  const bytes = await new Promise<Uint8Array>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result instanceof ArrayBuffer ? new Uint8Array(reader.result) : new Uint8Array());
+    reader.onerror = () => resolve(new Uint8Array());
+    reader.readAsArrayBuffer(header);
+  });
+  return isWebpMagic(bytes);
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, quality: number) {
-  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+  return new Promise<Blob | null>((resolve) => {
+    let settled = false;
+    const finish = (blob: Blob | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(blob);
+    };
+    const timeoutId = setTimeout(() => finish(null), 5_000);
+    try {
+      canvas.toBlob(finish, "image/webp", quality);
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+function canvasDataUrlToBlob(canvas: HTMLCanvasElement, quality: number) {
+  if (typeof canvas.toDataURL !== "function" || typeof atob !== "function") return null;
+  try {
+    const dataUrl = canvas.toDataURL("image/webp", quality);
+    const [metadata, payload] = dataUrl.split(",", 2);
+    if (!/^data:image\/webp(?:;[^,]*)?;base64$/i.test(metadata ?? "") || !payload) return null;
+    const binary = atob(payload);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: "image/webp" });
+  } catch {
+    return null;
+  }
+}
+
+async function encodeCanvasAsWebp(canvas: HTMLCanvasElement, quality: number) {
+  const nativeBlob = await canvasToBlob(canvas, quality);
+  if (nativeBlob?.type.toLowerCase() === "image/webp" && await hasWebpMagic(nativeBlob)) return nativeBlob;
+
+  // A few WebKit versions expose a working data-URL encoder while toBlob()
+  // returns null or silently falls back to PNG. Keep this as a small fallback;
+  // the MIME and RIFF/WEBP checks still apply before the file is accepted.
+  const dataUrlBlob = canvasDataUrlToBlob(canvas, quality);
+  if (dataUrlBlob && await hasWebpMagic(dataUrlBlob)) return dataUrlBlob;
+  throw new PhotoPrepareError("webp_encoder_unavailable");
 }
 
 /**
@@ -180,7 +233,19 @@ export async function renderWebp(image: LoadedImage, id: string, maxEdge: number
   let width = Math.max(1, Math.round(image.width * scale));
   let height = Math.max(1, Math.round(image.height * scale));
   const floorEdge = Math.min(minEdge, sourceEdge);
-  const qualitySteps = [startQuality, startQuality - 0.07, startQuality - 0.14, startQuality - 0.21, startQuality - 0.28, startQuality - 0.35, 0.3];
+  const qualitySteps = Array.from(new Set([
+    startQuality,
+    startQuality - 0.07,
+    startQuality - 0.14,
+    startQuality - 0.21,
+    startQuality - 0.28,
+    startQuality - 0.35,
+    0.3,
+    0.22,
+    0.16,
+    0.1,
+    0.08,
+  ].map((quality) => Math.max(0.08, quality))));
 
   for (let resizePass = 0; resizePass < 12; resizePass += 1) {
     for (const quality of qualitySteps) {
@@ -193,10 +258,7 @@ export async function renderWebp(image: LoadedImage, id: string, maxEdge: number
         context.imageSmoothingEnabled = true;
         context.imageSmoothingQuality = "high";
         context.drawImage(image.source, 0, 0, width, height);
-        const blob = await canvasToBlob(canvas, Math.max(0.3, quality));
-        if (!blob || blob.type.toLowerCase() !== "image/webp" || !(await hasWebpMagic(blob))) {
-          throw new PhotoPrepareError("webp_encoder_unavailable");
-        }
+        const blob = await encodeCanvasAsWebp(canvas, quality);
         if (blob.size <= maxBytes) {
           return {
             file: new File([blob], `foodprint-${id}.webp`, { type: "image/webp" }),
