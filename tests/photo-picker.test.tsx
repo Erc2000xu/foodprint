@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PhotoPicker } from "@/components/mark/photo-picker";
@@ -45,6 +45,27 @@ describe("PhotoPicker recovery state", () => {
     expect(await screen.findAllByAltText("待上传照片预览")).toHaveLength(2);
     expect(screen.getAllByText("当前设备暂时无法读取这张照片，请重试或换一张。")).toHaveLength(2);
     expect(states.at(-1)).toMatchObject({ preparedCount: 2, failedCount: 1, hasBlockingFailure: true });
+  });
+
+  it("snapshots the selected files before clearing a live native FileList", async () => {
+    preparePhotoSafely.mockResolvedValue(prepared("live-list"));
+    render(<PhotoPicker />);
+    const input = document.querySelector('input[name="photos"]') as HTMLInputElement;
+    const file = new File(["photo"], "live-list.jpg", { type: "image/jpeg" });
+    let liveFiles = [file];
+    const liveFileList = {
+      get 0() { return liveFiles[0]; },
+      get length() { return liveFiles.length; },
+      item(index: number) { return liveFiles[index] ?? null; },
+      [Symbol.iterator]() { return liveFiles[Symbol.iterator](); },
+    } as unknown as FileList;
+    Object.defineProperty(input, "files", { configurable: true, get: () => liveFileList });
+    Object.defineProperty(input, "value", { configurable: true, get: () => "", set: () => { liveFiles = []; } });
+
+    fireEvent.change(input);
+
+    expect(await screen.findByAltText("待上传照片预览")).toBeInTheDocument();
+    expect(preparePhotoSafely).toHaveBeenCalledWith(file, expect.any(String));
   });
 
   it("only clears the submit block after the user explicitly ignores a failed photo", async () => {
