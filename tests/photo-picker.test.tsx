@@ -43,8 +43,17 @@ describe("PhotoPicker recovery state", () => {
     ]);
 
     expect(await screen.findAllByAltText("待上传照片预览")).toHaveLength(2);
-    expect(screen.getAllByText("当前设备暂时无法读取这张照片，请重试或换一张。")).toHaveLength(2);
+    expect(screen.getAllByText("当前设备暂时无法读取这张照片，请重试或换一张。")).toHaveLength(1);
     expect(states.at(-1)).toMatchObject({ preparedCount: 2, failedCount: 1, hasBlockingFailure: true });
+  });
+
+  it("keeps the thumbnail submit input out of the visible picker controls", () => {
+    render(<PhotoPicker />);
+    const thumbnailInput = document.querySelector('input[name="photo_thumbnails"]');
+
+    expect(thumbnailInput).toHaveClass("photo-picker__input--thumbnail");
+    expect(thumbnailInput).toHaveAttribute("aria-hidden", "true");
+    expect(thumbnailInput).toHaveAttribute("tabindex", "-1");
   });
 
   it("snapshots the selected files before clearing a live native FileList", async () => {
