@@ -157,7 +157,7 @@ export function PhotoPicker({
     }
   };
 
-  const choosePhotos = async (files: FileList | null) => {
+  const choosePhotos = async (files: File[] | null) => {
     if (!files?.length || processingRef.current) return;
     const availableSlots = Math.max(0, 9 - entriesRef.current.length);
     const incoming = Array.from(files).slice(0, availableSlots);
@@ -198,7 +198,7 @@ export function PhotoPicker({
 
   return <section className="photo-picker" aria-label="照片上传">
     <div><strong>照片 <span className="optional-mark">可选，最多 9 张</span></strong><p>会同时生成展示图（最长边 1280px，≤600KiB）和小尺寸缩略图（最长边 640px，≤120KiB）。</p><p>上传前会压缩图片，并移除拍摄信息；预览来自最终展示图。</p></div>
-    <input ref={displayInputRef} className="photo-picker__input" name="photos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => { const selectedFiles = event.currentTarget.files; event.currentTarget.value = ""; void choosePhotos(selectedFiles); }} />
+    <input ref={displayInputRef} className="photo-picker__input" name="photos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void choosePhotos(selectedFiles); }} />
     <input ref={thumbnailInputRef} className="photo-picker__input" name="photo_thumbnails" type="file" accept="image/webp" multiple tabIndex={-1} aria-hidden="true" />
     {entries.filter((entry) => entry.status === "ready" && entry.prepared).map((entry) => <span key={`meta-${entry.id}`}><input type="hidden" name="photo_dimensions" value={`${entry.prepared!.width}x${entry.prepared!.height}`} /><input type="hidden" name="thumbnail_dimensions" value={`${entry.prepared!.thumbnailWidth}x${entry.prepared!.thumbnailHeight}`} /></span>)}
     {processing && <p className="photo-picker__state" role="status" aria-live="polite">照片正在逐张生成两种尺寸…</p>}
