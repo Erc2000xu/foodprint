@@ -1,6 +1,6 @@
 # Foodprint V2.4.1 photo-upload repair evidence — 2026-08-20 (updated 2026-08-25)
 
-状态：**候选发布被 SFTP 远端路径契约阻塞，待修正后重新发布并进行真机/生产验收**。本记录不宣称“已修复”或完成 DoD。
+状态：**候选发布被 SFTP 首传/续传契约阻塞，待修正后重新发布并进行真机/生产验收**。本记录不宣称“已修复”或完成 DoD。
 
 ## Gate 0 snapshot
 
@@ -43,10 +43,22 @@
   `stat remote: No such file or directory` on all three attempts. Tencent Cloud
   installation and public health SHA verification did not run.
 - Root cause identified from the log and OpenSSH `sftp` contract: `put` requires
-  its remote path to be a directory, but the workflow supplied a destination
-  filename. The correction uses a local uniquely named partial copy, uploads it
-  into `/opt/foodprint/incoming/`, verifies its size, then atomically renames it.
+  its remote path to be a directory, and `put -a` only resumes an existing
+  remote file. The first correction supplied `put -a` for a missing remote file,
+  so the client reported `stat remote` without creating it. The next correction
+  checks remote existence, uses plain `put` for first creation and `put -a` only
+  for retries, then verifies size and atomically renames the stable partial.
   CI and a new candidate release are required before treating transport as PASS.
+
+## Candidate production release retry 2 — 2026-08-25
+
+- Candidate release workflow: [Release production run 32863602109](https://github.com/Erc2000xu/foodprint/actions/runs/32863602109), using main SHA `3076d75ad279f8acad2ef6b6af163fb6bc6f6206`.
+- All pre-upload gates passed again, but all three SFTP attempts reported
+  `stat remote: No such file or directory` because `put -a` was used before a
+  remote partial existed. Tencent Cloud installation and public health SHA
+  verification did not run.
+- The correction is recorded in PR #42 and must pass CI and a new candidate
+  release before transport can be marked PASS.
 
 ## Local automated evidence
 
@@ -108,4 +120,4 @@ buckets and stores no image or identifying data.
   not treated as a clean security sign-off.
 
 Until every item above has evidence, the status must remain “修复开发中” or
-“候选发布被 SFTP 远端路径契约阻塞，待修正后重新发布并进行真机/生产验收”。
+“候选发布被 SFTP 首传/续传契约阻塞，待修正后重新发布并进行真机/生产验收”。
