@@ -1,6 +1,6 @@
 # Foodprint V2.4.1 photo-upload repair evidence — 2026-08-20 (updated 2026-08-26)
 
-状态：**候选生产发布已部署并通过单次公网版本校验；文档 DoD 尚未完成**。本记录不宣称“修复完成”或正式发布完成。
+状态：**仓库实现完成，待真机/生产验收**。候选生产发布已部署并通过单次公网版本校验；文档 DoD 尚未完成。本记录不宣称“修复完成”或正式发布完成。
 
 ## Gate 0 snapshot
 
@@ -150,4 +150,4 @@ buckets and stores no image or identifying data.
   not treated as a clean security sign-off.
 
 Until every item above has evidence, the status must remain “修复开发中” or
-“候选生产发布已部署并通过单次公网版本校验；文档 DoD 尚未完成”。
+“仓库实现完成，待真机/生产验收”。
