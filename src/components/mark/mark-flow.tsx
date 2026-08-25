@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { lookupAmapPoi, repairVisitPhotos, savePlaceMark, type MarkResult } from "@/app/mark/actions";
 import { categoryOptions, type PlaceCategory } from "@/lib/mark-options";
-import { PhotoPicker, type PhotoPickerState } from "@/components/mark/photo-picker";
+import { PhotoPicker, PhotoSubmissionError, type PhotoPickerHandle, type PhotoPickerState } from "@/components/mark/photo-picker";
+import { clientDisplayMode, reportClientMetric } from "@/lib/performance/client";
 import { OpinionPicker } from "@/components/mark/opinion-picker";
 import { cuisineOptions } from "@/lib/discovery-options";
 import { amapFailureMessage } from "@/lib/amap/failure-message";
@@ -71,11 +72,37 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
   const [userLocation, setUserLocation] = useState<UserLocation>();
   const [locationState, setLocationState] = useState("");
   const [photoPickerState, setPhotoPickerState] = useState<PhotoPickerState>({ processing: false, preparedCount: 0, failedCount: 0, hasBlockingFailure: false });
+  const [photoSubmitError, setPhotoSubmitError] = useState("");
+  const photoPickerRef = useRef<PhotoPickerHandle>(null);
   const [repairDismissed, setRepairDismissed] = useState(false);
   const [isLookingUp, startLookup] = useTransition();
+  const [isSubmitting, startSubmit] = useTransition();
   const requestId = useRef(0);
   const [state, action, pending] = useActionState(savePlaceMark, initial);
   const [repairState, repairAction, repairPending] = useActionState(repairVisitPhotos, initial);
+
+  const submitForm = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (photoPickerState.processing || photoPickerState.hasBlockingFailure) return;
+    setPhotoSubmitError("");
+    try {
+      const formData = new FormData(event.currentTarget);
+      const picker = photoPickerRef.current;
+      const expectedCount = picker?.preparedCount ?? 0;
+      const appendedCount = picker?.appendPreparedPhotos(formData) ?? 0;
+      if (appendedCount !== expectedCount || appendedCount !== photoPickerState.preparedCount) throw new PhotoSubmissionError();
+      const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+      const submitAction = submitter?.dataset.photoAction === "repair" ? repairAction : action;
+      startSubmit(() => submitAction(formData));
+    } catch (error) {
+      if (error instanceof PhotoSubmissionError) {
+        reportClientMetric("photo_submit_blocked", 1, "error", { reason: "prepared_photo_count_mismatch", browserMode: clientDisplayMode() });
+        setPhotoSubmitError("照片准备结果与提交内容不一致，请重新选择后再试。");
+        return;
+      }
+      setPhotoSubmitError("照片提交没有准备好，请重试。");
+    }
+  };
 
   useEffect(() => {
     if (keyword.trim().length < 2 || selected) {
@@ -142,7 +169,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
     <p className="eyebrow">{alreadyInGroup ? "已有朋友记录" : "收录新地点"}</p>
     <h1>{selected.name}</h1>
     <p className="selected-place">{selected.address || `${selected.city} ${selected.district}`}</p>
-    <form className="mark-form" action={action} onSubmit={(event) => { if (photoPickerState.processing || photoPickerState.hasBlockingFailure) event.preventDefault(); }}>
+    <form className="mark-form" action={action} onSubmit={submitForm}>
       <input type="hidden" name="poi_id" value={selected.poiId} />
       <input type="hidden" name="name" value={selected.name} />
       <input type="hidden" name="address" value={selected.address} />
@@ -160,12 +187,13 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       <section className="mark-form-section"><OpinionPicker namePrefix="opinion_tags" /></section>
       <label>推荐菜或饮品（可选）<input name="dishes" maxLength={400} placeholder="用逗号隔开，例如：手冲咖啡，巴斯克" /></label>
       <label>饭后感受（可选）<textarea name="note" maxLength={1000} placeholder="留下这次真实感受" /></label>
-      <PhotoPicker onStateChange={setPhotoPickerState} />
+      <PhotoPicker ref={photoPickerRef} onStateChange={setPhotoPickerState} />
       <label className="attestation"><input name="anonymous" type="checkbox" /> <span>匿名分享给小组<br /><small>大家会看到“匿名成员”；你自己仍可管理和导出这条记录。</small></span></label>
       {"error" in state && state.error && <p className="form-error">{state.error}</p>}
-      {state.status === "photo_repair_required" && <section className="photo-repair-panel" aria-live="polite"><input type="hidden" name="visit_record_id" value={state.visitRecordId} /><input type="hidden" name="group_place_id" value={state.groupPlaceId} /><strong>{state.message}</strong><p>记录已经保存；重试只会补传照片，不会再次创建地点或到访记录。</p>{"error" in repairState && repairState.error && <p className="form-error">{repairState.error}</p>}<div><button className="primary-button" type="submit" formAction={repairAction} disabled={repairPending || photoPickerState.processing}>{repairPending ? "正在重试上传…" : "重试上传"}</button><button className="text-button" type="button" onClick={() => setRepairDismissed(true)}>暂时不传</button></div></section>}
+      {photoSubmitError && <p className="form-error">{photoSubmitError}</p>}
+      {state.status === "photo_repair_required" && <section className="photo-repair-panel" aria-live="polite"><input type="hidden" name="visit_record_id" value={state.visitRecordId} /><input type="hidden" name="group_place_id" value={state.groupPlaceId} /><strong>{state.message}</strong><p>记录已经保存；重试只会补传照片，不会再次创建地点或到访记录。</p>{"error" in repairState && repairState.error && <p className="form-error">{repairState.error}</p>}<div><button className="primary-button" type="submit" data-photo-action="repair" disabled={repairPending || isSubmitting || photoPickerState.processing}>{repairPending || isSubmitting ? "正在重试上传…" : "重试上传"}</button><button className="text-button" type="button" onClick={() => setRepairDismissed(true)}>暂时不传</button></div></section>}
       <p className="form-completion-note">完成到访确认、到访日期、地点类型、主菜系、推荐强度和好在哪儿后即可保存。</p>
-      <button className="primary-button" disabled={pending || photoPickerState.processing || photoPickerState.hasBlockingFailure || state.status === "photo_repair_required"}>{pending ? "正在保存…" : photoPickerState.processing ? "正在处理照片…" : photoPickerState.hasBlockingFailure ? "请处理失败照片" : "保存这次体验"}</button>
+      <button className="primary-button" disabled={pending || isSubmitting || photoPickerState.processing || photoPickerState.hasBlockingFailure || state.status === "photo_repair_required"}>{pending || isSubmitting ? "正在保存…" : photoPickerState.processing ? "正在处理照片…" : photoPickerState.hasBlockingFailure ? "请处理失败照片" : "保存这次体验"}</button>
     </form>
   </section>;
 

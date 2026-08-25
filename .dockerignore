@@ -26,4 +26,5 @@ scripts
 !scripts/
 scripts/*
 !scripts/verify-icp-record.mjs
+!scripts/prepare-webp-worker.mjs
 supabase/.temp

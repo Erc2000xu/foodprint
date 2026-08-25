@@ -4,11 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "predev": "node scripts/prepare-webp-worker.mjs",
     "build": "next build",
+    "prebuild": "node scripts/prepare-webp-worker.mjs",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:webkit": "playwright test --project=webkit",
     "verify:icp": "node scripts/verify-icp-record.mjs",
     "verify:icp-build": "node scripts/verify-icp-build.mjs",
     "perf:baseline": "node scripts/measure-performance.mjs",
@@ -23,14 +27,17 @@
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
+    "@jsquash/webp": "1.5.0",
     "@supabase/ssr": "0.12.3",
     "@supabase/supabase-js": "2.110.8",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "wasm-feature-detect": "1.9.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "@tailwindcss/postcss": "4.2.1",
     "@testing-library/jest-dom": "6.6.3",
     "@testing-library/react": "16.3.2",

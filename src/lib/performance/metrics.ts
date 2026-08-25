@@ -44,6 +44,7 @@ export const clientMetricNames = [
   "photo_prepare_started",
   "photo_prepare_succeeded",
   "photo_prepare_failed",
+  "photo_submit_blocked",
   "photo_canonical_upload_failed",
   "photo_thumbnail_deferred",
   "photo_repair_shown",
@@ -95,6 +96,7 @@ export const photoMetricReasons = [
   "decode_failed",
   "webp_encoder_unavailable",
   "output_budget_unmet",
+  "prepared_photo_count_mismatch",
   "request",
   "storage",
   "database",
@@ -117,4 +119,7 @@ export type ClientMetricDimensions = {
   sizeBucket?: (typeof photoMetricSizeBuckets)[number];
   pixelsBucket?: (typeof photoMetricPixelBuckets)[number];
   durationBucket?: (typeof photoMetricDurationBuckets)[number];
+  format?: "jpeg" | "png" | "webp" | "heic" | "unknown";
+  encoderPath?: "native" | "wasm";
+  deploymentVersion?: string;
 };

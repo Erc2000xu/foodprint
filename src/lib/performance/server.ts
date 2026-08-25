@@ -1,4 +1,6 @@
-type ServerMetricOutcome = "ok" | "error" | "empty" | "timeout";
+import type { ClientMetricDimensions } from "@/lib/performance/metrics";
+
+type ServerMetricOutcome = "ok" | "success" | "error" | "empty" | "timeout";
 
 type ServerMetricFields = {
   route: string;
@@ -7,6 +9,14 @@ type ServerMetricFields = {
   outcome?: ServerMetricOutcome;
   count?: number;
   hasSession?: boolean;
+  reason?: ClientMetricDimensions["reason"];
+  browserMode?: ClientMetricDimensions["browserMode"];
+  format?: ClientMetricDimensions["format"];
+  sizeBucket?: ClientMetricDimensions["sizeBucket"];
+  pixelsBucket?: ClientMetricDimensions["pixelsBucket"];
+  durationBucket?: ClientMetricDimensions["durationBucket"];
+  encoderPath?: ClientMetricDimensions["encoderPath"];
+  deploymentVersion?: string;
 };
 
 function safeMetricName(metric: string) {
@@ -37,6 +47,14 @@ export function recordServerMetric(metric: string, fields: ServerMetricFields) {
   if (fields.outcome) payload.outcome = fields.outcome;
   if (fields.count !== undefined && Number.isFinite(fields.count)) payload.count = Math.max(0, Math.round(fields.count));
   if (fields.hasSession !== undefined) payload.hasSession = fields.hasSession;
+  if (fields.reason) payload.reason = fields.reason;
+  if (fields.browserMode) payload.browserMode = fields.browserMode;
+  if (fields.format) payload.format = fields.format;
+  if (fields.sizeBucket) payload.sizeBucket = fields.sizeBucket;
+  if (fields.pixelsBucket) payload.pixelsBucket = fields.pixelsBucket;
+  if (fields.durationBucket) payload.durationBucket = fields.durationBucket;
+  if (fields.encoderPath) payload.encoderPath = fields.encoderPath;
+  if (fields.deploymentVersion) payload.deploymentVersion = fields.deploymentVersion.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 12);
   console.info(JSON.stringify(payload));
 }
 

@@ -26,6 +26,13 @@ describe("V2.4 compliance build gate", () => {
     expect(buildVerifier).toContain(MIIT_FILING_URL);
   });
 
+  it("requires the release SHA to be asserted by the public health check", () => {
+    const health = read("src/app/api/health/route.ts");
+    const workflow = read(".github/workflows/release.yml");
+    expect(health).toContain("version: deploymentVersion()");
+    expect(workflow).toContain("payload.version !== process.env.EXPECTED_VERSION");
+  });
+
   it("passes the exact override and rejects missing or mismatched required values", () => {
     const script = path.join(root, "scripts/verify-icp-record.mjs");
     const run = (value?: string) => execFileSync(process.execPath, [script, "--required"], {
