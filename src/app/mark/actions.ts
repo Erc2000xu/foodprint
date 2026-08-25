@@ -8,6 +8,7 @@ import { isValidWebpFile, readWebpMetadata, type WebpMetadata } from "@/lib/phot
 import { createClient } from "@/lib/supabase/server";
 import { userFacingError } from "@/lib/user-facing-error";
 import { recordServerMetric } from "@/lib/performance/server";
+import type { ClientMetricDimensions } from "@/lib/performance/metrics";
 
 export type PoiLookup = { error?: string; found?: boolean };
 
@@ -94,8 +95,10 @@ type PhotoUploadOutcome = {
   thumbnailDeferred?: boolean;
 };
 
-function metricFailure(route: string, stage: "canonical_upload_failed" | "photo_repair_failed" | "request_failed", reason: string) {
-  recordServerMetric(`photo.${stage}.${reason}`, { route, outcome: "error", value: 1 });
+type PhotoUploadFailureReason = NonNullable<PhotoUploadOutcome["failureReason"]>;
+
+function metricFailure(route: string, stage: "canonical_upload_failed" | "photo_repair_failed" | "request_failed", reason: ClientMetricDimensions["reason"]) {
+  recordServerMetric(`photo.${stage}`, { route, outcome: "error", value: 1, reason });
 }
 
 async function stablePhotoId(input: PhotoUploadInput) {
@@ -129,10 +132,11 @@ function storageErrorReason(error: unknown): PhotoUploadOutcome["failureReason"]
 async function registerMissingThumbnail(input: PhotoUploadInput, photoId: string, thumbnailKey: string) {
   const storage = input.supabase.storage.from("place-photos");
   const upload = await storage.upload(thumbnailKey, input.pair.thumbnail, { contentType: "image/webp", upsert: false });
-  const hasThumbnail = !upload.error || /already exists|duplicate/i.test(upload.error.message);
+  const thumbnailAlreadyExists = Boolean(upload.error && /already exists|duplicate/i.test(upload.error.message));
+  const hasThumbnail = !upload.error || thumbnailAlreadyExists;
   if (!hasThumbnail) {
     await storage.remove([thumbnailKey]);
-    recordServerMetric("photo.thumbnail_deferred", { route: input.route, outcome: "ok", value: 1 });
+    recordServerMetric("photo.thumbnail_deferred", { route: input.route, outcome: "error", value: 1, reason: "storage" });
     return false;
   }
   const { error: registerError } = await input.supabase.rpc("register_photo_thumbnail", {
@@ -143,8 +147,8 @@ async function registerMissingThumbnail(input: PhotoUploadInput, photoId: string
     p_thumbnail_size_bytes: input.pair.thumbnail.size,
   });
   if (registerError) {
-    await storage.remove([thumbnailKey]);
-    recordServerMetric("photo.thumbnail_deferred", { route: input.route, outcome: "ok", value: 1 });
+    if (!thumbnailAlreadyExists) await storage.remove([thumbnailKey]);
+    recordServerMetric("photo.thumbnail_deferred", { route: input.route, outcome: "error", value: 1, reason: "database" });
     return false;
   }
   return true;
@@ -181,7 +185,8 @@ async function uploadPhotoPair(input: PhotoUploadInput): Promise<PhotoUploadOutc
   }
 
   const thumbnailUpload = await storage.upload(thumbnailKey, input.pair.thumbnail, { contentType: "image/webp", upsert: false });
-  const thumbnailReady = !thumbnailUpload.error || /already exists|duplicate/i.test(thumbnailUpload.error.message);
+  const thumbnailAlreadyExists = Boolean(thumbnailUpload.error && /already exists|duplicate/i.test(thumbnailUpload.error.message));
+  const thumbnailReady = !thumbnailUpload.error || thumbnailAlreadyExists;
   if (!thumbnailReady) await storage.remove([thumbnailKey]);
   const { error: photoError } = await input.supabase.from("photos").insert({
     id: photoId,
@@ -206,11 +211,14 @@ async function uploadPhotoPair(input: PhotoUploadInput): Promise<PhotoUploadOutc
     if (duplicate?.object_key === displayKey) return { photoId, created: false, thumbnailDeferred: !thumbnailReady };
   }
   if (photoError) {
-    await storage.remove([...(displayAlreadyExists ? [] : [displayKey]), ...(thumbnailReady ? [thumbnailKey] : [])]);
+    await storage.remove([
+      ...(displayAlreadyExists ? [] : [displayKey]),
+      ...(thumbnailReady && !thumbnailAlreadyExists ? [thumbnailKey] : []),
+    ]);
     metricFailure(input.route, "canonical_upload_failed", photoError.code === "42501" ? "permission" : "database");
     return { photoId, created: false, canonicalFailed: true, failureReason: photoError.code === "42501" ? "permission" : "database" };
   }
-  if (!thumbnailReady) recordServerMetric("photo.thumbnail_deferred", { route: input.route, outcome: "ok", value: 1 });
+  if (!thumbnailReady) recordServerMetric("photo.thumbnail_deferred", { route: input.route, outcome: "error", value: 1, reason: "storage" });
   return { photoId, created: true, thumbnailDeferred: !thumbnailReady };
 }
 
@@ -220,28 +228,36 @@ async function uploadPhotoPairs(input: Omit<PhotoUploadInput, "sortOrder" | "pai
     metricFailure(input.route, "request_failed", "request");
     const failedPhotoIds: string[] = [];
     for (const pair of input.pairs) failedPhotoIds.push(await stablePhotoId({ ...input, sortOrder: 0, pair }));
-    return { failedPhotoIds, warnings: [], error: "照片数量暂时无法确认，请稍后重试。" };
+    return { failedPhotoIds, failedReasons: input.pairs.map(() => "request" as const), warnings: [], error: "照片数量暂时无法确认，请稍后重试。" };
   }
   const existingIds = new Set((currentRows ?? []).map((row) => row.id));
+  const currentPhotoCount = currentRows?.length ?? 0;
+  let newlyAcceptedCount = 0;
   let nextSortOrder = Math.max(-1, ...(currentRows ?? []).map((row) => Number(row.sort_order))) + 1;
   const failedPhotoIds: string[] = [];
+  const failedReasons: PhotoUploadFailureReason[] = [];
   const warnings: string[] = [];
   for (const pair of input.pairs) {
     const photoId = await stablePhotoId({ ...input, sortOrder: nextSortOrder, pair });
-    if (!existingIds.has(photoId) && nextSortOrder >= 9) {
+    if (!existingIds.has(photoId) && currentPhotoCount + newlyAcceptedCount >= 9) {
       failedPhotoIds.push(photoId);
+      failedReasons.push("validation");
       metricFailure(input.route, "canonical_upload_failed", "validation");
       continue;
     }
     const result = await uploadPhotoPair({ ...input, sortOrder: nextSortOrder, pair });
-    if (result.canonicalFailed) failedPhotoIds.push(result.photoId);
+    if (result.canonicalFailed) {
+      failedPhotoIds.push(result.photoId);
+      failedReasons.push(result.failureReason ?? "unknown");
+    }
     if (result.thumbnailDeferred) warnings.push("照片已保存，小尺寸预览稍后补齐。");
     if (result.created) {
       existingIds.add(result.photoId);
+      newlyAcceptedCount += 1;
       nextSortOrder += 1;
     }
   }
-  return { failedPhotoIds, warnings: [...new Set(warnings)], error: undefined };
+  return { failedPhotoIds, failedReasons, warnings: [...new Set(warnings)], error: undefined };
 }
 
 function photoRepairMessage(count: number) {
@@ -297,14 +313,14 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     if (error || !data?.[0]?.mark_id) return { error: error ? userFacingError(error) : "操作没有完成，请再试一次。" };
     const visitRecordId = data[0].visit_record_id as string;
     const groupPlaceId = data[0].group_place_id as string;
-    const upload = photos.length ? await uploadPhotoPairs({ supabase: activeGroup.supabase, groupId: activeGroup.groupId, userId: activeGroup.userId, groupPlaceId, visitRecordId, pairs: photos, route: "/mark" }) : { failedPhotoIds: [], warnings: [], error: undefined };
+    const upload = photos.length ? await uploadPhotoPairs({ supabase: activeGroup.supabase, groupId: activeGroup.groupId, userId: activeGroup.userId, groupPlaceId, visitRecordId, pairs: photos, route: "/mark" }) : { failedPhotoIds: [], failedReasons: [], warnings: [], error: undefined };
     if (upload.error) {
       return { status: "photo_repair_required", visitRecordId, groupPlaceId, failedPhotoIds: upload.failedPhotoIds, message: `${upload.error} 记录已保存，请点击“重试上传”。` };
     }
     const { error: discoveryError } = await activeGroup.supabase.rpc("refresh_group_place_discovery_metadata", { p_group_place_id: groupPlaceId });
     await revalidatePlace(groupPlaceId);
     if (upload.failedPhotoIds.length) {
-      metricFailure("/mark", "photo_repair_failed", "canonical");
+      metricFailure("/mark", "photo_repair_failed", upload.failedReasons[0] ?? "unknown");
       return { status: "photo_repair_required", visitRecordId, groupPlaceId, failedPhotoIds: upload.failedPhotoIds, message: photoRepairMessage(upload.failedPhotoIds.length) };
     }
     if (discoveryError) return { error: "这一顿已记下，但地点信息正在整理，请稍后再查看。" };
@@ -339,13 +355,13 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
     });
     if (error || !data?.[0]?.visit_record_id) return { error: error ? userFacingError(error) : "操作没有完成，请再试一次。" };
     const visitRecordId = data[0].visit_record_id as string;
-    const upload = photos.length ? await uploadPhotoPairs({ supabase: activeGroup.supabase, groupId: activeGroup.groupId, userId: activeGroup.userId, groupPlaceId: value.group_place_id, visitRecordId, pairs: photos, route: "/mark" }) : { failedPhotoIds: [], warnings: [], error: undefined };
+    const upload = photos.length ? await uploadPhotoPairs({ supabase: activeGroup.supabase, groupId: activeGroup.groupId, userId: activeGroup.userId, groupPlaceId: value.group_place_id, visitRecordId, pairs: photos, route: "/mark" }) : { failedPhotoIds: [], failedReasons: [], warnings: [], error: undefined };
     await revalidatePlace(value.group_place_id, ["/activity"]);
     if (upload.error) {
       return { status: "photo_repair_required", visitRecordId, groupPlaceId: value.group_place_id, failedPhotoIds: upload.failedPhotoIds, message: `${upload.error} 这顿饭已记下，请点击“重试上传”。` };
     }
     if (upload.failedPhotoIds.length) {
-      metricFailure("/mark", "photo_repair_failed", "canonical");
+      metricFailure("/mark", "photo_repair_failed", upload.failedReasons[0] ?? "unknown");
       return { status: "photo_repair_required", visitRecordId, groupPlaceId: value.group_place_id, failedPhotoIds: upload.failedPhotoIds, message: photoRepairMessage(upload.failedPhotoIds.length) };
     }
     return { status: "complete", success: "这顿饭已记下，地点时间线也更新了。", warning: upload.warnings.length ? upload.warnings.join(" ") : undefined };
@@ -368,15 +384,18 @@ export async function repairVisitPhotos(_: PhotoRepairResult, formData: FormData
     if ("error" in activeGroup) return { error: activeGroup.error };
     const { data: visit } = await activeGroup.supabase.from("visit_records").select("id, user_id, group_place_id, deleted_at, hidden_at").eq("id", visitRecordId.data).maybeSingle();
     const { data: groupPlace } = await activeGroup.supabase.from("group_places").select("id, group_id, status").eq("id", groupPlaceId.data).eq("group_id", activeGroup.groupId).eq("status", "active").maybeSingle();
-    if (!visit || visit.user_id !== activeGroup.userId || visit.group_place_id !== groupPlaceId.data || visit.deleted_at || visit.hidden_at || !groupPlace) return { error: "这条到访现在不能补传照片，请刷新后再试。" };
+    if (!visit || visit.user_id !== activeGroup.userId || visit.group_place_id !== groupPlaceId.data || visit.deleted_at || visit.hidden_at || !groupPlace) {
+      metricFailure("/place/:id", "photo_repair_failed", "permission");
+      return { error: "这条到访现在不能补传照片，请刷新后再试。" };
+    }
     const upload = await uploadPhotoPairs({ supabase: activeGroup.supabase, groupId: activeGroup.groupId, userId: activeGroup.userId, groupPlaceId: groupPlaceId.data, visitRecordId: visitRecordId.data, pairs: parsedPhotos.pairs, route: "/place/:id" });
     await revalidatePlace(groupPlaceId.data);
-    if (upload.error) return { error: upload.error };
+    if (upload.error) return { status: "photo_repair_required", visitRecordId: visitRecordId.data, groupPlaceId: groupPlaceId.data, failedPhotoIds: upload.failedPhotoIds, message: upload.error };
     if (upload.failedPhotoIds.length) {
-      metricFailure("/place/:id", "photo_repair_failed", "canonical");
+      metricFailure("/place/:id", "photo_repair_failed", upload.failedReasons[0] ?? "unknown");
       return { status: "photo_repair_required", visitRecordId: visitRecordId.data, groupPlaceId: groupPlaceId.data, failedPhotoIds: upload.failedPhotoIds, message: photoRepairMessage(upload.failedPhotoIds.length) };
     }
-    recordServerMetric("photo.repair_succeeded", { route: "/place/:id", outcome: "ok", value: 1 });
+    recordServerMetric("photo.repair_succeeded", { route: "/place/:id", outcome: "success", value: 1 });
     return { status: "complete", success: "照片已补传。", groupPlaceId: groupPlaceId.data, visitRecordId: visitRecordId.data, warning: upload.warnings.length ? upload.warnings.join(" ") : undefined };
   } catch {
     metricFailure("/place/:id", "photo_repair_failed", "unknown");

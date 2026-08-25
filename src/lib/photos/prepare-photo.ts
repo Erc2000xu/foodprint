@@ -1,3 +1,6 @@
+import { readWebpMetadata } from "@/lib/photos/webp-metadata";
+import { WebpWorkerEncoder, WebpWorkerError, type WebpWorkerFactory } from "@/lib/photos/webp-encoder-worker-client";
+
 export const PHOTO_PREPARE_LIMITS = {
   sourceMaxBytes: 20 * 1024 * 1024,
   sourceMaxPixels: 60_000_000,
@@ -25,7 +28,12 @@ export type PreparedPhoto = {
   height: number;
   thumbnailWidth: number;
   thumbnailHeight: number;
+  sourceWidth: number;
+  sourceHeight: number;
+  encoderPath: WebpEncoderPath;
 };
+
+export type WebpEncoderPath = "native" | "wasm";
 
 export type PhotoPrepareResult =
   | { ok: true; photo: PreparedPhoto }
@@ -33,11 +41,17 @@ export type PhotoPrepareResult =
 
 export class PhotoPrepareError extends Error {
   readonly code: PhotoPrepareFailureCode;
+  readonly encoderPath?: WebpEncoderPath;
+  readonly timedOut: boolean;
+  readonly cancelled: boolean;
 
-  constructor(code: PhotoPrepareFailureCode, message = code) {
+  constructor(code: PhotoPrepareFailureCode, message: string = code, options: { encoderPath?: WebpEncoderPath; timedOut?: boolean; cancelled?: boolean } = {}) {
     super(message);
     this.name = "PhotoPrepareError";
     this.code = code;
+    this.encoderPath = options.encoderPath;
+    this.timedOut = options.timedOut ?? false;
+    this.cancelled = options.cancelled ?? false;
   }
 }
 
@@ -48,7 +62,7 @@ type LoadedImage = {
   dispose: () => void;
 };
 
-type RenderedWebp = { file: File; width: number; height: number };
+type RenderedWebp = { file: File; width: number; height: number; encoderPath: WebpEncoderPath };
 
 const supportedMimeTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"]);
 const supportedExtensions = new Set(["jpg", "jpeg", "png", "webp", "heic", "heif"]);
@@ -85,15 +99,21 @@ function assertPixelBudget(width: number, height: number) {
   if (width * height > PHOTO_PREPARE_LIMITS.sourceMaxPixels) throw new PhotoPrepareError("source_too_many_pixels");
 }
 
-function imageElementSource(file: File) {
+function cancelledError() {
+  return new PhotoPrepareError("decode_failed", "cancelled", { cancelled: true });
+}
+
+function imageElementSource(file: File, signal?: AbortSignal) {
   const sourceUrl = URL.createObjectURL(file);
   return new Promise<LoadedImage>((resolve, reject) => {
     const image = new Image();
     let settled = false;
     const disposeUrl = () => URL.revokeObjectURL(sourceUrl);
+    const removeAbortListener = () => signal?.removeEventListener("abort", onAbort);
     const fail = (error: unknown) => {
       if (settled) return;
       settled = true;
+      removeAbortListener();
       disposeUrl();
       reject(error instanceof PhotoPrepareError ? error : new PhotoPrepareError("decode_failed"));
     };
@@ -106,6 +126,7 @@ function imageElementSource(file: File) {
         return;
       }
       settled = true;
+      removeAbortListener();
       resolve({
         source: image,
         width: image.naturalWidth,
@@ -113,6 +134,12 @@ function imageElementSource(file: File) {
         dispose: disposeUrl,
       });
     };
+    const onAbort = () => fail(cancelledError());
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
     image.decoding = "async";
     image.onload = () => {
       if (typeof image.decode !== "function") {
@@ -130,13 +157,18 @@ function imageElementSource(file: File) {
 }
 
 /** Decode with the fast path first, then always retry through a browser image element. */
-export async function loadImage(file: File): Promise<LoadedImage> {
+export async function loadImage(file: File, signal?: AbortSignal): Promise<LoadedImage> {
+  if (signal?.aborted) throw cancelledError();
   if (!sourceLooksSupported(file)) throw new PhotoPrepareError("decode_unsupported");
   if (file.size > PHOTO_PREPARE_LIMITS.sourceMaxBytes) throw new PhotoPrepareError("source_too_large");
 
   if (typeof createImageBitmap === "function") {
     try {
       const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+      if (signal?.aborted) {
+        bitmap.close();
+        throw cancelledError();
+      }
       try {
         assertPixelBudget(bitmap.width, bitmap.height);
       } catch (error) {
@@ -152,7 +184,7 @@ export async function loadImage(file: File): Promise<LoadedImage> {
   }
 
   try {
-    return await imageElementSource(file);
+    return await imageElementSource(file, signal);
   } catch (error) {
     if (error instanceof PhotoPrepareError) throw error;
     throw new PhotoPrepareError(isHeic(file) ? "decode_unsupported" : "decode_failed");
@@ -165,29 +197,41 @@ function isWebpMagic(bytes: Uint8Array) {
     && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
 }
 
-async function hasWebpMagic(blob: Blob) {
-  const header = blob.slice(0, 12);
-  if (typeof header.arrayBuffer === "function") return isWebpMagic(new Uint8Array(await header.arrayBuffer()));
-  if (typeof FileReader !== "function") return false;
-  const bytes = await new Promise<Uint8Array>((resolve) => {
+async function blobBuffer(blob: Blob) {
+  if (typeof blob.arrayBuffer === "function") return blob.arrayBuffer();
+  const header = blob.slice(0, blob.size);
+  if (typeof header.arrayBuffer === "function") return header.arrayBuffer();
+  if (typeof FileReader !== "function") return null;
+  return new Promise<ArrayBuffer | null>((resolve) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result instanceof ArrayBuffer ? new Uint8Array(reader.result) : new Uint8Array());
-    reader.onerror = () => resolve(new Uint8Array());
+    reader.onload = () => resolve(reader.result instanceof ArrayBuffer ? reader.result : null);
+    reader.onerror = () => resolve(null);
     reader.readAsArrayBuffer(header);
   });
-  return isWebpMagic(bytes);
+}
+
+async function isValidEncodedWebp(blob: Blob | null, width: number, height: number) {
+  if (!blob || blob.type.toLowerCase() !== "image/webp" || blob.size < 16) return false;
+  const buffer = await blobBuffer(blob);
+  if (!buffer || !isWebpMagic(new Uint8Array(buffer))) return false;
+  const metadata = readWebpMetadata(buffer);
+  return metadata?.width === width && metadata.height === height;
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, quality: number) {
-  return new Promise<Blob | null>((resolve) => {
+  return new Promise<{ blob: Blob | null; timedOut: boolean }>((resolve) => {
     let settled = false;
+    let timedOut = false;
     const finish = (blob: Blob | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutId);
-      resolve(blob);
+      resolve({ blob, timedOut });
     };
-    const timeoutId = setTimeout(() => finish(null), 5_000);
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      finish(null);
+    }, 5_000);
     try {
       canvas.toBlob(finish, "image/webp", quality);
     } catch {
@@ -211,23 +255,88 @@ function canvasDataUrlToBlob(canvas: HTMLCanvasElement, quality: number) {
   }
 }
 
-async function encodeCanvasAsWebp(canvas: HTMLCanvasElement, quality: number) {
-  const nativeBlob = await canvasToBlob(canvas, quality);
-  if (nativeBlob?.type.toLowerCase() === "image/webp" && await hasWebpMagic(nativeBlob)) return nativeBlob;
+export type WebpEncoder = {
+  readonly lastPath?: WebpEncoderPath;
+  encode(canvas: HTMLCanvasElement, width: number, height: number, quality: number, signal?: AbortSignal): Promise<{ blob: Blob; path: WebpEncoderPath }>;
+  dispose(): void;
+};
 
-  // A few WebKit versions expose a working data-URL encoder while toBlob()
-  // returns null or silently falls back to PNG. Keep this as a small fallback;
-  // the MIME and RIFF/WEBP checks still apply before the file is accepted.
-  const dataUrlBlob = canvasDataUrlToBlob(canvas, quality);
-  if (dataUrlBlob && await hasWebpMagic(dataUrlBlob)) return dataUrlBlob;
-  throw new PhotoPrepareError("webp_encoder_unavailable");
+export type RenderWebpOptions = {
+  encoder?: WebpEncoder;
+  workerFactory?: WebpWorkerFactory;
+  signal?: AbortSignal;
+  /** Guarded E2E switch; production callers leave the native fast path enabled. */
+  forceWasm?: boolean;
+};
+
+function createEncoderError(error: unknown, encoderPath: WebpEncoderPath, fallbackTimedOut = false) {
+  if (error instanceof PhotoPrepareError) return error;
+  const timedOut = error instanceof WebpWorkerError ? error.timedOut : fallbackTimedOut;
+  return new PhotoPrepareError("webp_encoder_unavailable", "webp_encoder_unavailable", { encoderPath, timedOut });
+}
+
+/** Native canvas encoding is attempted first; the worker is not constructed until it fails. */
+export function createWebpEncoder(workerFactory?: WebpWorkerFactory, forceWasm = false): WebpEncoder {
+  let nativeUnavailable = forceWasm;
+  let nativeTimedOut = false;
+  let workerEncoder: WebpWorkerEncoder | undefined;
+  let lastPath: WebpEncoderPath | undefined;
+  return {
+    get lastPath() { return lastPath; },
+    async encode(canvas, width, height, quality, signal) {
+      if (signal?.aborted) throw cancelledError();
+      if (!nativeUnavailable) {
+        const nativeResult = await canvasToBlob(canvas, quality);
+        if (await isValidEncodedWebp(nativeResult.blob, width, height)) {
+          lastPath = "native";
+          return { blob: nativeResult.blob!, path: "native" };
+        }
+        // A few WebKit versions expose a working data-URL encoder while
+        // toBlob() returns null or silently falls back to PNG. This remains a
+        // compatibility attempt within the same native implementation.
+        const dataUrlBlob = canvasDataUrlToBlob(canvas, quality);
+        if (await isValidEncodedWebp(dataUrlBlob, width, height)) {
+          lastPath = "native";
+          return { blob: dataUrlBlob!, path: "native" };
+        }
+        nativeUnavailable = true;
+        nativeTimedOut = nativeResult.timedOut;
+        if (signal?.aborted) throw cancelledError();
+      }
+
+      let imageData: ImageData;
+      try {
+        const context = canvas.getContext("2d");
+        if (!context) throw new PhotoPrepareError("webp_encoder_unavailable", "webp_encoder_unavailable", { encoderPath: "wasm" });
+        imageData = context.getImageData(0, 0, width, height);
+      } catch (error) {
+        throw createEncoderError(error, "wasm", nativeTimedOut);
+      }
+      try {
+        workerEncoder ??= new WebpWorkerEncoder(workerFactory);
+        const encoded = await workerEncoder.encode(imageData, quality, signal);
+        const blob = new Blob([encoded], { type: "image/webp" });
+        if (!await isValidEncodedWebp(blob, width, height)) throw new WebpWorkerError("invalid_webp_output");
+        lastPath = "wasm";
+        return { blob, path: "wasm" };
+      } catch (error) {
+        throw createEncoderError(error, "wasm");
+      }
+    },
+    dispose() {
+      workerEncoder?.dispose();
+      workerEncoder = undefined;
+    },
+  };
 }
 
 /**
  * Render one output independently. A real MIME and RIFF/WEBP header are both
  * required; a browser that silently falls back to PNG/JPEG is not accepted.
  */
-export async function renderWebp(image: LoadedImage, id: string, maxEdge: number, minEdge: number, maxBytes: number, startQuality: number): Promise<RenderedWebp> {
+export async function renderWebp(image: LoadedImage, id: string, maxEdge: number, minEdge: number, maxBytes: number, startQuality: number, options: RenderWebpOptions = {}): Promise<RenderedWebp> {
+  const encoder = options.encoder ?? createWebpEncoder(options.workerFactory, options.forceWasm);
+  const ownsEncoder = !options.encoder;
   const sourceEdge = Math.max(image.width, image.height);
   const scale = Math.min(1, maxEdge / sourceEdge);
   let width = Math.max(1, Math.round(image.width * scale));
@@ -247,39 +356,45 @@ export async function renderWebp(image: LoadedImage, id: string, maxEdge: number
     0.08,
   ].map((quality) => Math.max(0.08, quality))));
 
-  for (let resizePass = 0; resizePass < 12; resizePass += 1) {
-    for (const quality of qualitySteps) {
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      try {
-        const context = canvas.getContext("2d");
-        if (!context) throw new PhotoPrepareError("webp_encoder_unavailable");
-        context.imageSmoothingEnabled = true;
-        context.imageSmoothingQuality = "high";
-        context.drawImage(image.source, 0, 0, width, height);
-        const blob = await encodeCanvasAsWebp(canvas, quality);
-        if (blob.size <= maxBytes) {
-          return {
-            file: new File([blob], `foodprint-${id}.webp`, { type: "image/webp" }),
-            width,
-            height,
-          };
+  try {
+    for (let resizePass = 0; resizePass < 12; resizePass += 1) {
+      for (const quality of qualitySteps) {
+        if (options.signal?.aborted) throw cancelledError();
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        try {
+          const context = canvas.getContext("2d");
+          if (!context) throw new PhotoPrepareError("webp_encoder_unavailable", "webp_encoder_unavailable", { encoderPath: "wasm" });
+          context.imageSmoothingEnabled = true;
+          context.imageSmoothingQuality = "high";
+          context.drawImage(image.source, 0, 0, width, height);
+          const encoded = await encoder.encode(canvas, width, height, quality, options.signal);
+          if (encoded.blob.size <= maxBytes) {
+            return {
+              file: new File([encoded.blob], `foodprint-${id}.webp`, { type: "image/webp" }),
+              width,
+              height,
+              encoderPath: encoded.path,
+            };
+          }
+        } finally {
+          // Release the backing store between attempts, which matters on iOS for
+          // 12–48MP sources and when a user selects several images in a row.
+          canvas.width = 0;
+          canvas.height = 0;
         }
-      } finally {
-        // Release the backing store between attempts, which matters on iOS for
-        // 12–48MP sources and when a user selects several images in a row.
-        canvas.width = 0;
-        canvas.height = 0;
       }
+      const edge = Math.max(width, height);
+      if (edge <= floorEdge) break;
+      const nextScale = Math.max(floorEdge / edge, 0.84);
+      width = Math.max(1, Math.round(width * nextScale));
+      height = Math.max(1, Math.round(height * nextScale));
     }
-    const edge = Math.max(width, height);
-    if (edge <= floorEdge) break;
-    const nextScale = Math.max(floorEdge / edge, 0.84);
-    width = Math.max(1, Math.round(width * nextScale));
-    height = Math.max(1, Math.round(height * nextScale));
+    throw new PhotoPrepareError("output_budget_unmet", "output_budget_unmet", { encoderPath: encoder.lastPath });
+  } finally {
+    if (ownsEncoder) encoder.dispose();
   }
-  throw new PhotoPrepareError("output_budget_unmet");
 }
 
 function newPhotoId() {
@@ -287,12 +402,15 @@ function newPhotoId() {
   return `photo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export async function preparePhoto(file: File, id = newPhotoId()): Promise<PreparedPhoto> {
+export type PreparePhotoOptions = { signal?: AbortSignal; workerFactory?: WebpWorkerFactory; forceWasm?: boolean };
+
+export async function preparePhoto(file: File, id = newPhotoId(), options: PreparePhotoOptions = {}): Promise<PreparedPhoto> {
   if (file.size > PHOTO_PREPARE_LIMITS.sourceMaxBytes) throw new PhotoPrepareError("source_too_large");
-  const image = await loadImage(file);
+  const image = await loadImage(file, options.signal);
+  const encoder = createWebpEncoder(options.workerFactory, options.forceWasm);
   try {
-    const display = await renderWebp(image, `${id}-display`, PHOTO_PREPARE_LIMITS.displayMaxEdge, PHOTO_PREPARE_LIMITS.displayMinEdge, PHOTO_PREPARE_LIMITS.displayMaxBytes, 0.8);
-    const thumbnail = await renderWebp(image, `${id}-thumbnail`, PHOTO_PREPARE_LIMITS.thumbnailMaxEdge, PHOTO_PREPARE_LIMITS.thumbnailMinEdge, PHOTO_PREPARE_LIMITS.thumbnailMaxBytes, 0.74);
+    const display = await renderWebp(image, `${id}-display`, PHOTO_PREPARE_LIMITS.displayMaxEdge, PHOTO_PREPARE_LIMITS.displayMinEdge, PHOTO_PREPARE_LIMITS.displayMaxBytes, 0.8, { encoder, signal: options.signal });
+    const thumbnail = await renderWebp(image, `${id}-thumbnail`, PHOTO_PREPARE_LIMITS.thumbnailMaxEdge, PHOTO_PREPARE_LIMITS.thumbnailMinEdge, PHOTO_PREPARE_LIMITS.thumbnailMaxBytes, 0.74, { encoder, signal: options.signal });
     return {
       id,
       displayFile: display.file,
@@ -301,15 +419,19 @@ export async function preparePhoto(file: File, id = newPhotoId()): Promise<Prepa
       height: display.height,
       thumbnailWidth: thumbnail.width,
       thumbnailHeight: thumbnail.height,
+      sourceWidth: image.width,
+      sourceHeight: image.height,
+      encoderPath: display.encoderPath === "wasm" || thumbnail.encoderPath === "wasm" ? "wasm" : "native",
     };
   } finally {
+    encoder.dispose();
     image.dispose();
   }
 }
 
-export async function preparePhotoSafely(file: File, id = newPhotoId()): Promise<PhotoPrepareResult> {
+export async function preparePhotoSafely(file: File, id = newPhotoId(), options: PreparePhotoOptions = {}): Promise<PhotoPrepareResult> {
   try {
-    return { ok: true, photo: await preparePhoto(file, id) };
+    return { ok: true, photo: await preparePhoto(file, id, options) };
   } catch (error) {
     const prepareError = error instanceof PhotoPrepareError ? error : new PhotoPrepareError("decode_failed");
     return { ok: false, code: prepareError.code, error: prepareError };
@@ -322,8 +444,8 @@ export function photoPrepareFailureMessage(code: PhotoPrepareFailureCode) {
     case "source_too_many_pixels": return "这张照片像素过高，设备暂时无法安全处理，请换一张或先缩小。";
     case "decode_unsupported": return "当前设备暂时无法读取这张照片，请换用 JPG、PNG 或 WebP。";
     case "decode_failed": return "当前设备暂时无法读取这张照片，请重试或换一张。";
-    case "webp_encoder_unavailable":
-    case "output_budget_unmet": return "这张照片暂时没有处理好，请重试或换一张。";
+    case "webp_encoder_unavailable": return "当前设备暂时无法生成 WebP，请重试或换一张。";
+    case "output_budget_unmet": return "这张照片压缩后仍然过大，请换一张尺寸较小的照片。";
   }
 }
 

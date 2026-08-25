@@ -20,6 +20,9 @@ const metricItem = z.object({
     sizeBucket: z.enum(photoMetricSizeBuckets).optional(),
     pixelsBucket: z.enum(photoMetricPixelBuckets).optional(),
     durationBucket: z.enum(photoMetricDurationBuckets).optional(),
+    format: z.enum(["jpeg", "png", "webp", "heic", "unknown"]).optional(),
+    encoderPath: z.enum(["native", "wasm"]).optional(),
+    deploymentVersion: z.string().regex(/^[a-zA-Z0-9_-]{1,12}$/).optional(),
   }).strict().optional(),
 });
 const metricPayload = z.union([metricItem, z.object({ metrics: z.array(metricItem).min(1).max(20) })]);
@@ -29,11 +32,27 @@ export async function POST(request: Request) {
     const parsed = metricPayload.safeParse(await request.json());
     if (!parsed.success) return Response.json({ error: "invalid_metric" }, { status: 400, headers: { "Cache-Control": "no-store" } });
     const metrics = "metrics" in parsed.data ? parsed.data.metrics : [parsed.data];
-    metrics.forEach((item) => recordServerMetric(`client.${item.metric}`, {
-      route: normalizePerformanceRoute(item.route ?? item.dimensions?.routeTemplate ?? "/"),
-      value: item.value,
-      outcome: item.dimensions?.outcome === "timeout" || item.detail === "timeout" ? "timeout" : item.dimensions?.outcome === "error" || item.detail === "error" ? "error" : "ok",
-    }));
+    metrics.forEach((item) => {
+      const isPhotoMetric = item.metric.startsWith("photo_");
+      const outcome = item.dimensions?.outcome === "timeout" || item.detail === "timeout"
+        ? "timeout"
+        : item.dimensions?.outcome === "error" || item.detail === "error" || item.metric === "photo_prepare_failed"
+          ? "error"
+          : isPhotoMetric ? "success" : "ok";
+      recordServerMetric(`client.${item.metric}`, {
+        route: normalizePerformanceRoute(item.route ?? item.dimensions?.routeTemplate ?? "/"),
+        value: item.value,
+        outcome,
+        browserMode: item.dimensions?.browserMode,
+        format: item.dimensions?.format,
+        reason: item.dimensions?.reason,
+        sizeBucket: item.dimensions?.sizeBucket,
+        pixelsBucket: item.dimensions?.pixelsBucket,
+        durationBucket: item.dimensions?.durationBucket,
+        encoderPath: item.dimensions?.encoderPath,
+        deploymentVersion: item.dimensions?.deploymentVersion,
+      });
+    });
     return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ error: "invalid_metric" }, { status: 400, headers: { "Cache-Control": "no-store" } });
