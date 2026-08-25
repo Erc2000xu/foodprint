@@ -82,6 +82,12 @@
   {"status":"ok","service":"foodprint","version":"b7a01537253f576857187ac7a68b884641c0fdd8","timestamp":"2026-08-25T17:23:18.953Z"}
   ```
 
+- A production request to `/service-worker.js?v=old` returned
+  `foodprint-shell-b7a01537253f576857187ac7a68b884641c0fdd8`, confirming the
+  legacy-query compatibility route emits the current deployment version. This
+  is server-side evidence only; the installed iPhone PWA still needs a real
+  device upgrade test.
+
 - This is a PASS for candidate transport, installation and one public health
   assertion. It is not a PASS for real-device acceptance, production canary
   behavior, 24-hour observations or the complete handoff DoD.
