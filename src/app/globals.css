@@ -78,6 +78,7 @@ body {
 .site-compliance-footer a { color: inherit; }
 .site-compliance-footer__record { font-weight: 700; }
 .site-compliance-footer__query-link { font-size: 11px; }
+.site-compliance-footer__version { color: color-mix(in srgb, var(--color-text-muted), transparent 14%); font-size: 10px; letter-spacing: .04em; }
 
 /* Keep the global footer above the fixed five-item app navigation. */
 .app-shell + .site-compliance-footer { margin-bottom: calc(68px + env(safe-area-inset-bottom)); }

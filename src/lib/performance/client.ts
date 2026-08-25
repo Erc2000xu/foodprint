@@ -54,6 +54,11 @@ export function clientDisplayMode(): "browser" | "standalone" {
   return window.matchMedia?.("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone ? "standalone" : "browser";
 }
 
+export function clientDeploymentVersion() {
+  if (typeof document === "undefined") return "unknown";
+  return document.documentElement.dataset.deploymentVersion?.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 12) || "unknown";
+}
+
 export function clientNetworkType(): "wifi" | "cellular" | "unknown" {
   if (typeof navigator === "undefined") return "unknown";
   const connection = (navigator as Navigator & { connection?: { type?: string; effectiveType?: string } }).connection;

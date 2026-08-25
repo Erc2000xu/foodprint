@@ -17,12 +17,14 @@ const publicShell = [
 
 export const serviceWorkerCachePrefix = "foodprint-shell-";
 export const navigationTimeoutMs = 3_000;
+export const precacheTimeoutMs = 5_000;
 
 export function buildServiceWorkerScript(buildId: string) {
   const safeBuildId = buildId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || "current";
   return `const CACHE=${JSON.stringify(`${serviceWorkerCachePrefix}${safeBuildId}`)};
 const CACHE_PREFIX=${JSON.stringify(serviceWorkerCachePrefix)};
 const NAVIGATION_TIMEOUT_MS=${navigationTimeoutMs};
+const PRECACHE_TIMEOUT_MS=${precacheTimeoutMs};
 const PUBLIC_SHELL=${JSON.stringify(publicShell)};
 
 function notify(type, detail) {
@@ -33,7 +35,7 @@ async function precache() {
   const cache = await caches.open(CACHE);
   let launchHtml = "";
   try {
-    const response = await fetch("/launch", { cache: "no-store" });
+    const response = await fetchWithTimeout("/launch", { cache: "no-store" });
     if (response.ok) {
       const copy = response.clone();
       await cache.put("/launch", copy);
@@ -42,13 +44,26 @@ async function precache() {
   } catch { /* The next online visit can fill the public shell cache. */ }
   const shellAssetManifest = extractShellAssetUrls(launchHtml);
   await Promise.allSettled([...PUBLIC_SHELL.filter((url) => url !== "/launch"), ...shellAssetManifest].map(async (url) => {
-    try { await cache.add(url); } catch { /* A single optional asset must not block installation. */ }
+    try {
+      const response = await fetchWithTimeout(url, { cache: "no-store" });
+      if (response.ok) await cache.put(url, response);
+    } catch { /* A single optional asset must not block installation. */ }
   }));
+}
+
+async function fetchWithTimeout(input, init) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PRECACHE_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function extractShellAssetUrls(html) {
   const urls = [];
-  const pattern = /(?:src|href)=["'](\/_next\/static\/[^"']+|\/(?:mascot|nav-icons|icons|fonts)\/[^"']+)["']/g;
+  const pattern = /(?:src|href)=["'](\\/_next\\/static\\/[^"']+|\\/(?:mascot|nav-icons|icons|fonts)\\/[^"']+)["']/g;
   let match;
   while ((match = pattern.exec(html))) if (!urls.includes(match[1])) urls.push(match[1]);
   return urls;

@@ -1,10 +1,10 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useRef, useState } from "react";
-import { reportClientMetric } from "@/lib/performance/client";
-import { photoPrepareFailureMessage, preparePhotoSafely, type PhotoPrepareFailureCode, type PreparedPhoto } from "@/lib/photos/prepare-photo";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { clientDeploymentVersion, clientDisplayMode, reportClientMetric } from "@/lib/performance/client";
 import type { ClientMetricDimensions } from "@/lib/performance/metrics";
+import { photoFormat, photoPixelBucket, photoPrepareFailureMessage, preparePhotoSafely, type PhotoPrepareFailureCode, type PreparedPhoto } from "@/lib/photos/prepare-photo";
 
 export type PhotoPickerState = {
   processing: boolean;
@@ -22,6 +22,20 @@ type PhotoEntry = {
   previewUrl?: string;
   failureCode?: PhotoPrepareFailureCode;
   ignored?: boolean;
+};
+
+export class PhotoSubmissionError extends Error {
+  readonly code = "prepared_photo_count_mismatch" as const;
+
+  constructor() {
+    super("prepared_photo_count_mismatch");
+    this.name = "PhotoSubmissionError";
+  }
+}
+
+export type PhotoPickerHandle = {
+  readonly preparedCount: number;
+  appendPreparedPhotos(formData: FormData): number;
 };
 
 function newEntryId() {
@@ -46,7 +60,13 @@ function elapsedNow() {
 
 function metricDimensions(file: File, durationMs?: number): ClientMetricDimensions {
   const sizeBucket = (file.size <= 1 * 1024 * 1024 ? "0_1mb" : file.size <= 3 * 1024 * 1024 ? "1_3mb" : file.size <= 6 * 1024 * 1024 ? "3_6mb" : file.size <= 20 * 1024 * 1024 ? "6_20mb" : "over_20mb") as ClientMetricDimensions["sizeBucket"];
-  return durationMs === undefined ? { sizeBucket } : { sizeBucket, durationBucket: durationBucket(durationMs) };
+  return {
+    sizeBucket,
+    format: photoFormat(file),
+    browserMode: clientDisplayMode(),
+    deploymentVersion: clientDeploymentVersion(),
+    ...(durationMs === undefined ? {} : { durationBucket: durationBucket(durationMs) }),
+  };
 }
 
 function replaceEntry(entries: PhotoEntry[], id: string, update: (entry: PhotoEntry) => PhotoEntry | null) {
@@ -57,16 +77,16 @@ function replaceEntry(entries: PhotoEntry[], id: string, update: (entry: PhotoEn
   });
 }
 
-export function PhotoPicker({
-  onStateChange,
-  onProcessingChange,
-}: {
+export const PhotoPicker = forwardRef<PhotoPickerHandle, {
   onStateChange?: (state: PhotoPickerState) => void;
   /** Kept for existing callers while the richer state rolls out. */
   onProcessingChange?: (processing: boolean) => void;
-} = {}) {
-  const displayInputRef = useRef<HTMLInputElement>(null);
-  const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  maxPhotos?: number;
+  /** Only the guarded browser harness uses this to exercise the real fallback. */
+  forceWasm?: boolean;
+}>(function PhotoPicker({ onStateChange, onProcessingChange, maxPhotos = 9, forceWasm = false }, ref) {
+  const photoLimit = Math.min(9, Math.max(0, Math.floor(maxPhotos)));
+  const abortControllerRef = useRef<AbortController | null>(null);
   const entriesRef = useRef<PhotoEntry[]>([]);
   const mountedRef = useRef(true);
   const processingRef = useRef(false);
@@ -74,28 +94,9 @@ export function PhotoPicker({
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState("");
 
-  const syncInputs = (nextEntries = entriesRef.current) => {
-    const ready = nextEntries.filter((entry) => entry.status === "ready" && entry.prepared);
-    try {
-      if (typeof DataTransfer !== "function") return;
-      const displayTransfer = new DataTransfer();
-      const thumbnailTransfer = new DataTransfer();
-      ready.forEach((entry) => {
-        displayTransfer.items.add(entry.prepared!.displayFile);
-        thumbnailTransfer.items.add(entry.prepared!.thumbnailFile);
-      });
-      if (displayInputRef.current) displayInputRef.current.files = displayTransfer.files;
-      if (thumbnailInputRef.current) thumbnailInputRef.current.files = thumbnailTransfer.files;
-    } catch {
-      // A browser may expose a read-only FileList. Supported browsers use
-      // DataTransfer; the visible list remains usable when it is unavailable.
-    }
-  };
-
   const updateEntries = (next: PhotoEntry[]) => {
     entriesRef.current = next;
     if (mountedRef.current) setEntries(next);
-    syncInputs(next);
   };
 
   const revokeEntryUrl = (entry: PhotoEntry) => {
@@ -103,14 +104,16 @@ export function PhotoPicker({
   };
 
   useEffect(() => {
+    abortControllerRef.current = new AbortController();
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      abortControllerRef.current?.abort();
       entriesRef.current.forEach(revokeEntryUrl);
     };
   }, []);
 
-  const preparedCount = entries.filter((entry) => entry.status === "ready").length;
+  const preparedCount = entries.filter((entry) => entry.status === "ready" && entry.prepared).length;
   const failedCount = entries.filter((entry) => entry.status === "failed").length;
   const hasBlockingFailure = entries.some((entry) => entry.status === "failed" && !entry.ignored);
 
@@ -118,6 +121,23 @@ export function PhotoPicker({
     onProcessingChange?.(processing);
     onStateChange?.({ processing, preparedCount, failedCount, hasBlockingFailure });
   }, [failedCount, hasBlockingFailure, onProcessingChange, onStateChange, preparedCount, processing]);
+
+  useImperativeHandle(ref, () => ({
+    get preparedCount() {
+      return entriesRef.current.filter((entry) => entry.status === "ready" && entry.prepared).length;
+    },
+    appendPreparedPhotos(formData) {
+      const ready = entriesRef.current.filter((entry) => entry.status === "ready" && entry.prepared);
+      ready.forEach((entry) => {
+        const prepared = entry.prepared!;
+        formData.append("photos", prepared.displayFile);
+        formData.append("photo_thumbnails", prepared.thumbnailFile);
+        formData.append("photo_dimensions", `${prepared.width}x${prepared.height}`);
+        formData.append("thumbnail_dimensions", `${prepared.thumbnailWidth}x${prepared.thumbnailHeight}`);
+      });
+      return ready.length;
+    },
+  }), []);
 
   const prepareEntry = async (entry: PhotoEntry, manageProcessing = true) => {
     if (!mountedRef.current) return;
@@ -130,7 +150,7 @@ export function PhotoPicker({
       updateEntries(replaceEntry(entriesRef.current, entry.id, (current) => ({ ...current, status: "processing", failureCode: undefined, ignored: false })));
       const startedAt = elapsedNow();
       reportClientMetric("photo_prepare_started", 1, undefined, metricDimensions(entry.sourceFile));
-      const result = await preparePhotoSafely(entry.sourceFile, entry.id);
+      const result = await preparePhotoSafely(entry.sourceFile, entry.id, { signal: abortControllerRef.current?.signal, forceWasm });
       if (!mountedRef.current) return;
       const elapsed = startedAt === 0 ? 0 : elapsedNow() - startedAt;
       if (result.ok) {
@@ -143,11 +163,11 @@ export function PhotoPicker({
             revokeEntryUrl(current);
             return { ...current, status: "ready", prepared: result.photo, previewUrl, failureCode: undefined, ignored: false };
           }));
-          reportClientMetric("photo_prepare_succeeded", 1, undefined, { ...metricDimensions(entry.sourceFile, elapsed), pixelsBucket: "unknown" });
+          reportClientMetric("photo_prepare_succeeded", 1, undefined, { ...metricDimensions(entry.sourceFile, elapsed), pixelsBucket: photoPixelBucket(result.photo.sourceWidth * result.photo.sourceHeight), encoderPath: result.photo.encoderPath });
         }
       } else {
         updateEntries(replaceEntry(entriesRef.current, entry.id, (current) => ({ ...current, status: "failed", prepared: undefined, previewUrl: undefined, failureCode: result.code, ignored: false })));
-        reportClientMetric("photo_prepare_failed", 1, result.code === "source_too_large" ? "error" : undefined, { ...metricDimensions(entry.sourceFile, elapsed), reason: result.code });
+        reportClientMetric("photo_prepare_failed", 1, result.error.timedOut ? "timeout" : "error", { ...metricDimensions(entry.sourceFile, elapsed), reason: result.code, ...(result.error.encoderPath ? { encoderPath: result.error.encoderPath } : {}), pixelsBucket: "unknown" });
       }
     } finally {
       if (manageProcessing) {
@@ -159,9 +179,9 @@ export function PhotoPicker({
 
   const choosePhotos = async (files: File[] | null) => {
     if (!files?.length || processingRef.current) return;
-    const availableSlots = Math.max(0, 9 - entriesRef.current.length);
+    const availableSlots = Math.max(0, photoLimit - entriesRef.current.length);
     const incoming = Array.from(files).slice(0, availableSlots);
-    if (incoming.length < files.length) setMessage("这次到访最多保留 9 张照片。");
+    if (incoming.length < files.length) setMessage(`这次到访最多保留 ${photoLimit} 张照片。`);
     const seen = new Set(entriesRef.current.map((entry) => entry.sourceKey));
     const uniqueIncoming = incoming.filter((file) => {
       const key = sourceKey(file);
@@ -197,10 +217,8 @@ export function PhotoPicker({
   };
 
   return <section className="photo-picker" aria-label="照片上传">
-    <div><strong>照片 <span className="optional-mark">可选，最多 9 张</span></strong><p>会同时生成展示图（最长边 1280px，≤600KiB）和小尺寸缩略图（最长边 640px，≤120KiB）。</p><p>上传前会压缩图片，并移除拍摄信息；预览来自最终展示图。</p></div>
-    <input ref={displayInputRef} className="photo-picker__input" name="photos" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void choosePhotos(selectedFiles); }} />
-    <input ref={thumbnailInputRef} className="photo-picker__input photo-picker__input--thumbnail" name="photo_thumbnails" type="file" accept="image/webp" multiple tabIndex={-1} aria-hidden="true" />
-    {entries.filter((entry) => entry.status === "ready" && entry.prepared).map((entry) => <span key={`meta-${entry.id}`}><input type="hidden" name="photo_dimensions" value={`${entry.prepared!.width}x${entry.prepared!.height}`} /><input type="hidden" name="thumbnail_dimensions" value={`${entry.prepared!.thumbnailWidth}x${entry.prepared!.thumbnailHeight}`} /></span>)}
+    <div><strong>照片 <span className="optional-mark">可选，最多 {photoLimit} 张</span></strong><p>会同时生成展示图（最长边 1280px，≤600KiB）和小尺寸缩略图（最长边 640px，≤120KiB）。</p><p>上传前会压缩图片，并移除拍摄信息；预览来自最终展示图。</p></div>
+    <input className="photo-picker__input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple disabled={photoLimit === 0} onChange={(event) => { const selectedFiles = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void choosePhotos(selectedFiles); }} />
     {processing && <p className="photo-picker__state" role="status" aria-live="polite">照片正在逐张生成两种尺寸…</p>}
     {message && <p className="photo-picker__message" role="status">{message}</p>}
     {hasBlockingFailure && <div className="photo-picker__actions"><button type="button" className="text-button" onClick={ignoreFailures}>忽略失败照片并继续</button><small>忽略后只会上传已准备好的照片。</small></div>}
@@ -209,6 +227,8 @@ export function PhotoPicker({
       {entry.status === "failed" && <p>{photoPrepareFailureMessage(entry.failureCode ?? "decode_failed")}</p>}
       <div className="photo-picker__item-actions">{entry.status === "failed" && <button type="button" disabled={processing} onClick={() => void prepareEntry(entry)}>重试</button>}<button type="button" onClick={() => remove(entry.id)} aria-label={`移除照片 ${entry.id}`}>移除</button></div>
     </figure>)}</div>}
-    {entries.length >= 9 && <small className="photo-picker__limit">已选择 {entries.length} / 9 张。</small>}
+    {photoLimit > 0 && entries.length >= photoLimit && <small className="photo-picker__limit">已选择 {entries.length} / {photoLimit} 张。</small>}
   </section>;
-}
+});
+
+PhotoPicker.displayName = "PhotoPicker";

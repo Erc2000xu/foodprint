@@ -16,6 +16,9 @@
 # next.js
 /.next/
 /out/
+/public/workers/webp-encoder.worker.js
+/public/workers/webp-codec/
+/test-results/
 
 # production
 /build

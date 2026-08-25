@@ -3,6 +3,7 @@ import { SiteComplianceFooter } from "@/components/compliance/site-compliance-fo
 import { PerformanceObserver } from "@/components/performance/performance-observer";
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import { NavigationCoordinator } from "@/components/navigation/navigation-coordinator";
+import { deploymentVersion, shortDeploymentVersion } from "@/lib/release/version";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,7 +21,7 @@ export const viewport: Viewport = {
   themeColor: "#f7f3e9",
 };
 
-const deploymentVersion = process.env.DEPLOYMENT_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "local";
+const currentDeploymentVersion = deploymentVersion();
 
 export default function RootLayout({
   children,
@@ -28,12 +29,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" data-deployment-version={shortDeploymentVersion(currentDeploymentVersion)}>
       <body>
         <NavigationCoordinator>{children}</NavigationCoordinator>
         <SiteComplianceFooter />
         <PerformanceObserver />
-        <PwaRegister buildId={deploymentVersion} />
+        <PwaRegister />
       </body>
     </html>
   );

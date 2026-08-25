@@ -1,4 +1,5 @@
 import { MIIT_FILING_URL, resolveIcpRecord } from "@/lib/compliance/icp";
+import { shortDeploymentVersion } from "@/lib/release/version";
 
 export function SiteComplianceFooter() {
   const icpRecord = resolveIcpRecord();
@@ -21,6 +22,7 @@ export function SiteComplianceFooter() {
       >
         工信部备案查询
       </a>
+      <small className="site-compliance-footer__version" data-testid="deployment-version">版本 {shortDeploymentVersion()}</small>
     </footer>
   );
 }

@@ -60,6 +60,10 @@ jobs:
         run: npm run verify:icp -- --required
       - name: Validate release candidate
         run: npm run check
+      - name: Install Chromium and WebKit for browser gates
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run real browser upload and PWA gates
+        run: npm run test:e2e
 
   verify-migration-integrity:
     needs: verify-release-request
@@ -191,5 +195,12 @@ jobs:
 
       - name: Verify the public production endpoint
         run: |
-          curl --fail --silent --show-error --retry 10 --retry-delay 3 --connect-timeout 10 --max-time 20 \
-            https://foodprint.com.cn/api/health
+          health_json="$(curl --fail --silent --show-error --retry 10 --retry-delay 3 --connect-timeout 10 --max-time 20 \
+            https://foodprint.com.cn/api/health)"
+          HEALTH_JSON="$health_json" EXPECTED_VERSION="${{ github.sha }}" node -e '
+            const payload = JSON.parse(process.env.HEALTH_JSON ?? "{}");
+            if (payload.status !== "ok" || payload.version !== process.env.EXPECTED_VERSION) {
+              console.error(JSON.stringify({ expected: process.env.EXPECTED_VERSION, received: payload }));
+              process.exit(1);
+            }
+          '
