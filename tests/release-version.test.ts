@@ -44,4 +44,15 @@ describe("release version and PWA update contracts", () => {
     expect(dockerfile).toContain("ARG DEPLOYMENT_VERSION=local");
     expect(dockerfile).toContain("ENV DEPLOYMENT_VERSION=${DEPLOYMENT_VERSION}");
   });
+
+  it("uses a resumable, size-verified production bundle transfer", () => {
+    const workflow = fs.readFileSync(path.join(process.cwd(), ".github/workflows/release.yml"), "utf8");
+
+    expect(workflow).toContain("timeout-minutes: 180");
+    expect(workflow).toContain("sftp -P");
+    expect(workflow).toContain("put -a %s /opt/foodprint/incoming/%s");
+    expect(workflow).toContain("stat -c '%s'");
+    expect(workflow).toContain("mv -f '/opt/foodprint/incoming/$remote_partial'");
+    expect(workflow).not.toMatch(/\bscp\b/);
+  });
 });
