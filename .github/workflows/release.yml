@@ -192,8 +192,17 @@ jobs:
           trap 'rm -f -- "$local_partial"' EXIT
           upload_ok=0
           for attempt in 1 2 3; do
-            if printf 'put -a %s /opt/foodprint/incoming/\n' \
-              "$local_partial" |
+            sftp_command='put'
+            if ssh -p "$TENCENT_PORT" \
+              -o ConnectTimeout=20 \
+              -o ServerAliveInterval=30 \
+              -o ServerAliveCountMax=10 \
+              "$TENCENT_DEPLOY_USER@$TENCENT_HOST" \
+              "test -f '$remote_partial'"; then
+              sftp_command='put -a'
+            fi
+            if printf '%s %s /opt/foodprint/incoming/\n' \
+              "$sftp_command" "$local_partial" |
               sftp -P "$TENCENT_PORT" \
                 -o BatchMode=yes \
                 -o ConnectTimeout=20 \
