@@ -1,20 +1,34 @@
 # Foodprint V2.4.1 photo-upload repair evidence — 2026-08-20 (updated 2026-08-25)
 
-状态：**仓库实现完成，待真机/生产验收**。本记录不授权合并、发布或写“已修复”。
+状态：**候选发布被传输超时阻塞，待重新发布后真机/生产验收**。本记录不宣称“已修复”或完成 DoD。
 
 ## Gate 0 snapshot
 
-- Working branch: `codex/fix-v2-4-1-photo-upload`
-- Local `main` and the repair branch base are both aligned to public remote
-  `main`: `64847a8b03defaad3f5d5d3f071f82c94dd2c8c1` (verified 2026-08-21).
-- `main` is an ancestor of the repair worktree; no unrelated local `main`
-  commits were overwritten.
-- Working tree contains uncommitted repair changes; no PR SHA exists yet.
-- `https://foodprint.com.cn/api/health` was rechecked on 2026-08-21 and returned
-  `status/service/timestamp` without `version`; therefore production SHA alignment
-  is not proven and the release gate remains open.
+- Working branch: `codex/fix-release-transfer` (release transport follow-up).
+- The photo-upload repair was merged through PR #39; the resulting `main` SHA is
+  `5d30650cb58e1e8a583b318b7230c4fb87cdd7c5` (verified 2026-08-25).
+- No unrelated local `main` commits were overwritten; the follow-up transport
+  change is not merged or released yet.
+- `https://foodprint.com.cn/api/health` was rechecked before the candidate release
+  and returned `status/service/timestamp` without `version`; production SHA
+  alignment is still not proven.
 - Release workflow now asserts `payload.version === github.sha`; this assertion has
-  not yet run against a production deployment of this worktree.
+  not run because the candidate release stopped before installation.
+
+## Candidate production release attempt — 2026-08-25
+
+- PR #39 CI passed: application validation and migration integrity both PASS.
+- Candidate release workflow: [Release production run 32845749455](https://github.com/Erc2000xu/foodprint/actions/runs/32845749455).
+- Request, clean migration replay, Chromium/WebKit release-candidate E2E,
+  production migration plan/application, Edge Function deploy, Docker image build
+  and bundle packaging all PASS.
+- The upload step started at `2026-08-25T12:10:38Z` using `scp` and was canceled by
+  the 180-minute job boundary at `2026-08-25T14:09:24Z` before installation.
+  Tencent Cloud installation and public health SHA verification therefore did not
+  run. This is a release-chain BLOCKED result, not production acceptance.
+- Follow-up branch changes the transfer to resumable SFTP with remote byte-size
+  verification, atomic rename, bounded retries and a 180-minute deployment
+  window. It must pass CI and a new candidate release before any true-device test.
 
 ## Local automated evidence
 
@@ -55,8 +69,8 @@ buckets and stores no image or identifying data.
 
 ## Still required by the handoff completion definition
 
-- Merge to `main`, obtain the PR SHA, deploy only through `Release production`, and
-  prove production health `version` equals that SHA.
+- Pass the release-transport follow-up CI, deploy only through `Release production`,
+  and prove production health `version` equals the deployed `main` SHA.
 - The clean local Supabase migration replay is now complete: 29 migrations
   reached `20260818100000`, and the required photo schema/RPC/policies were
   found. On 2026-08-25, the local CLI was restarted successfully with API,
@@ -76,4 +90,4 @@ buckets and stores no image or identifying data.
   not treated as a clean security sign-off.
 
 Until every item above has evidence, the status must remain “修复开发中” or
-“仓库实现完成，待真机/生产验收”。
+“候选发布被传输超时阻塞，待重新发布后真机/生产验收”。

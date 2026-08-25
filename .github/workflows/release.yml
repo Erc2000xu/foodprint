@@ -84,9 +84,9 @@ jobs:
       - verify-release-candidate
       - verify-migration-integrity
     runs-on: ubuntu-latest
-    # Observed Tencent Cloud bundle uploads range from ~33 to ~88 minutes.
-    # Keep a bounded headroom for the slow path without changing the release order.
-    timeout-minutes: 120
+    # Observed Tencent Cloud bundle uploads can exceed 90 minutes on the slow path.
+    # Keep a bounded headroom while the transfer step resumes partial uploads.
+    timeout-minutes: 180
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -182,8 +182,45 @@ jobs:
         run: |
           ssh -p "$TENCENT_PORT" "$TENCENT_DEPLOY_USER@$TENCENT_HOST" \
             'mkdir -p /opt/foodprint/incoming && chmod 0750 /opt/foodprint/incoming'
-          scp -P "$TENCENT_PORT" "$RELEASE_BUNDLE" \
-            "$TENCENT_DEPLOY_USER@$TENCENT_HOST:/opt/foodprint/incoming/$RELEASE_BUNDLE"
+          local_size="$(stat -c '%s' "$RELEASE_BUNDLE")"
+          remote_partial="${RELEASE_BUNDLE}.partial-${GITHUB_RUN_ID}"
+          upload_ok=0
+          for attempt in 1 2 3; do
+            if printf 'put -a %s /opt/foodprint/incoming/%s\n' \
+              "$RELEASE_BUNDLE" "$remote_partial" |
+              sftp -P "$TENCENT_PORT" \
+                -o BatchMode=yes \
+                -o ConnectTimeout=20 \
+                -o ServerAliveInterval=30 \
+                -o ServerAliveCountMax=10 \
+                -b - "$TENCENT_DEPLOY_USER@$TENCENT_HOST"; then
+              remote_size="$(ssh -p "$TENCENT_PORT" \
+                -o ConnectTimeout=20 \
+                -o ServerAliveInterval=30 \
+                -o ServerAliveCountMax=10 \
+                "$TENCENT_DEPLOY_USER@$TENCENT_HOST" \
+                "stat -c '%s' '/opt/foodprint/incoming/$remote_partial'")"
+              if [[ "$remote_size" == "$local_size" ]]; then
+                ssh -p "$TENCENT_PORT" \
+                  -o ConnectTimeout=20 \
+                  -o ServerAliveInterval=30 \
+                  -o ServerAliveCountMax=10 \
+                  "$TENCENT_DEPLOY_USER@$TENCENT_HOST" \
+                  "mv -f '/opt/foodprint/incoming/$remote_partial' '/opt/foodprint/incoming/$RELEASE_BUNDLE'"
+                upload_ok=1
+                echo "release bundle upload verified: ${local_size} bytes"
+                break
+              fi
+              echo "release bundle size mismatch on attempt ${attempt}: local=${local_size} remote=${remote_size}" >&2
+            else
+              echo "release bundle transfer attempt ${attempt} did not complete; retrying resumable upload" >&2
+            fi
+            sleep 10
+          done
+          [[ "$upload_ok" -eq 1 ]] || {
+            echo 'release bundle upload did not reach the verified remote size' >&2
+            exit 1
+          }
 
       - name: Install release on Tencent Cloud
         env:
