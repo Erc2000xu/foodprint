@@ -1,14 +1,15 @@
 # Foodprint V2.4.1 photo-upload repair evidence — 2026-08-20 (updated 2026-08-25)
 
-状态：**候选发布被传输超时阻塞，待重新发布后真机/生产验收**。本记录不宣称“已修复”或完成 DoD。
+状态：**候选发布被 SFTP 远端路径契约阻塞，待修正后重新发布并进行真机/生产验收**。本记录不宣称“已修复”或完成 DoD。
 
 ## Gate 0 snapshot
 
 - Working branch: `codex/fix-release-transfer` (release transport follow-up).
-- The photo-upload repair was merged through PR #39; the resulting `main` SHA is
+- The photo-upload repair was merged through PR #39; the resulting `main` SHA was
   `5d30650cb58e1e8a583b318b7230c4fb87cdd7c5` (verified 2026-08-25).
-- No unrelated local `main` commits were overwritten; the follow-up transport
-  change is not merged or released yet.
+- The transport follow-up PR #40 was merged to `main` as
+  `b71817e4b7f32f4a74497763dba522cb9ea5ed6b`, but its candidate release did not
+  install successfully; the next transport correction is not released yet.
 - `https://foodprint.com.cn/api/health` was rechecked before the candidate release
   and returned `status/service/timestamp` without `version`; production SHA
   alignment is still not proven.
@@ -29,6 +30,23 @@
 - Follow-up branch changes the transfer to resumable SFTP with remote byte-size
   verification, atomic rename, bounded retries and a 180-minute deployment
   window. It must pass CI and a new candidate release before any true-device test.
+
+## Candidate production release retry — 2026-08-25
+
+- PR #40 CI passed: application validation and migration integrity both PASS;
+  it was merged as `b71817e4b7f32f4a74497763dba522cb9ea5ed6b`.
+- Candidate release workflow: [Release production run 32861913806](https://github.com/Erc2000xu/foodprint/actions/runs/32861913806).
+- Release request, clean migration replay, release-candidate Chromium/WebKit
+  gates, production migration plan/application, POI Edge Function deploy,
+  Docker image build and bundle packaging all PASS.
+- The upload step failed at `2026-08-25T14:54:28Z` with
+  `stat remote: No such file or directory` on all three attempts. Tencent Cloud
+  installation and public health SHA verification did not run.
+- Root cause identified from the log and OpenSSH `sftp` contract: `put` requires
+  its remote path to be a directory, but the workflow supplied a destination
+  filename. The correction uses a local uniquely named partial copy, uploads it
+  into `/opt/foodprint/incoming/`, verifies its size, then atomically renames it.
+  CI and a new candidate release are required before treating transport as PASS.
 
 ## Local automated evidence
 
@@ -69,7 +87,7 @@ buckets and stores no image or identifying data.
 
 ## Still required by the handoff completion definition
 
-- Pass the release-transport follow-up CI, deploy only through `Release production`,
+- Pass the corrected release-transport CI, deploy only through `Release production`,
   and prove production health `version` equals the deployed `main` SHA.
 - The clean local Supabase migration replay is now complete: 29 migrations
   reached `20260818100000`, and the required photo schema/RPC/policies were
@@ -90,4 +108,4 @@ buckets and stores no image or identifying data.
   not treated as a clean security sign-off.
 
 Until every item above has evidence, the status must remain “修复开发中” or
-“候选发布被传输超时阻塞，待重新发布后真机/生产验收”。
+“候选发布被 SFTP 远端路径契约阻塞，待修正后重新发布并进行真机/生产验收”。
