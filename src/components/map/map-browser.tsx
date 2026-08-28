@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { FormEvent, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getAmapBeijingDistricts, searchAmapPoiTips, type AmapDistrict, type AmapPoiCandidate } from "@/lib/amap/poi-client";
 import { DynamicMapAdapter } from "@/components/map/lazy-map-adapter";
@@ -485,7 +485,7 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
     if (durationMs > 0) locationMessageTimerRef.current = window.setTimeout(() => setLocationMessage(""), durationMs);
   };
 
-  const requestNearby = (purpose: LocatePurpose = "manual") => {
+  const requestNearby = useCallback((purpose: LocatePurpose = "manual") => {
     if (locateStatus === "locating") return;
     locationPurposeRef.current = purpose;
     if (purpose === "entry" || purpose === "auto") autoLocationStartedRef.current = true;
@@ -511,7 +511,7 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
     setLocateStatus("locating");
     showLocationMessage(purpose === "sort" ? "正在获取位置并排序…" : "正在获取位置…");
     setLocateRequest((value) => value + 1);
-  };
+  }, [locateStatus, mapEnabled, mapMode, mapReady, requestCamera, showLocationMessage, switchView]);
 
   const reportMapFailure = (failure: MapFailure) => {
     setMapFailure(failure);
