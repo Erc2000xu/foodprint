@@ -159,6 +159,8 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
   const [locationConsent, setLocationConsent] = useState<LocationConsent>(null);
   const [locationConsentReady, setLocationConsentReady] = useState(false);
   const [showLocationExplanation, setShowLocationExplanation] = useState(false);
+  const [sessionIntent, setSessionIntent] = useState(false);
+  const [returnStateFound, setReturnStateFound] = useState(false);
   const [cameraRequest, setCameraRequest] = useState<MapCameraRequest>();
   const interactionRootRef = useRef<HTMLDivElement>(null);
   const listIntentActionsRef = useRef<HTMLDivElement>(null);
@@ -168,13 +170,11 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
   const previousOpenMenuRef = useRef<OpenMenu | undefined>(undefined);
   const menuHistoryRef = useRef(false);
   const returnRestoredRef = useRef(false);
-  const returnStateFoundRef = useRef(false);
   const amapRequestId = useRef(0);
   const amapSearchController = useRef<AbortController | null>(null);
   const locationMessageTimerRef = useRef<number | undefined>(undefined);
   const locationPurposeRef = useRef<LocatePurpose>("manual");
   const autoLocationStartedRef = useRef(false);
-  const sessionIntentRef = useRef(false);
   const sessionPromptResolvedRef = useRef(false);
   const cameraRequestSequenceRef = useRef(0);
   const awaitingNearbyViewportRef = useRef(false);
@@ -196,8 +196,8 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
   const currentUrl = `${pathname}${paramsString ? `?${paramsString}` : ""}`;
   const scrollStorageKey = `foodprint:scroll:${currentUrl}`;
   const locationOnEntryEnabled = mapRuntimeConfig.enabled && mapRuntimeConfig.locationOnEntryEnabled !== false;
-  const hasExplicitIntent = sessionIntentRef.current || Boolean(state.query || state.areaIds.length || state.categoryIds.length || state.cuisineIds.length || state.sceneTagIds.length || state.recommendationLevels.length || state.priceRange || state.quickFilter || state.locationFilter || state.sort !== "recommended");
-  const hasReturnState = returnStateFoundRef.current || Boolean(readMapReturnState(userId, currentUrl));
+  const hasExplicitIntent = sessionIntent || Boolean(state.query || state.areaIds.length || state.categoryIds.length || state.cuisineIds.length || state.sceneTagIds.length || state.recommendationLevels.length || state.priceRange || state.quickFilter || state.locationFilter || state.sort !== "recommended");
+  const hasReturnState = returnStateFound || Boolean(readMapReturnState(userId, currentUrl));
   const filterSummary = [
     state.locationFilter?.name,
     state.categoryIds.length ? state.categoryIds.map((id) => categoryLabelById[id] ?? id).join("、") : "",
@@ -321,19 +321,25 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
     returnRestoredRef.current = true;
     const saved = takeMapReturnState(userId, currentUrl);
     if (!saved) return;
-    returnStateFoundRef.current = true;
+    const returnStateFrame = window.requestAnimationFrame(() => setReturnStateFound(true));
     let restoreFrame: number | undefined;
     if (saved.viewport?.center && Number.isFinite(saved.viewport.zoom)) {
       restoreFrame = window.requestAnimationFrame(() => setRestoreViewport(saved.viewport));
     }
     dispatchSheet({ type: "RESTORE_RETURN_STATE", status: saved.status, selectedPlaceId: saved.selectedPlaceId });
-    return () => { if (restoreFrame !== undefined) window.cancelAnimationFrame(restoreFrame); };
+    return () => {
+      window.cancelAnimationFrame(returnStateFrame);
+      if (restoreFrame !== undefined) window.cancelAnimationFrame(restoreFrame);
+    };
   }, [currentUrl, mapMode, userId]);
 
   useEffect(() => {
     if (!mapMode) return;
-    setLocationConsent(readLocationConsent(userId));
-    setLocationConsentReady(true);
+    const frame = window.requestAnimationFrame(() => {
+      setLocationConsent(readLocationConsent(userId));
+      setLocationConsentReady(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [mapMode, userId]);
 
   useEffect(() => {
@@ -360,6 +366,8 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
       setRestoreViewport(undefined);
       setLocationConsent(null);
       setLocationConsentReady(false);
+      setSessionIntent(false);
+      setReturnStateFound(false);
       awaitingNearbyViewportRef.current = false;
       autoLocationStartedRef.current = true;
       setLocateStatus("idle");
@@ -428,7 +436,7 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
   }, []);
 
   const commit = (patch: Partial<SearchState>, options?: { clear?: boolean; cameraIntent?: MapCameraIntent; userIntent?: boolean }) => {
-    if (options?.userIntent !== false) sessionIntentRef.current = true;
+    if (options?.userIntent !== false) setSessionIntent(true);
     const next: SearchState = options?.clear ? { ...defaultSearchState, ...patch } : { ...state, ...patch };
     setClusterPlaceIds(undefined);
     if (options?.cameraIntent) requestCamera(options.cameraIntent, options.userIntent !== false);

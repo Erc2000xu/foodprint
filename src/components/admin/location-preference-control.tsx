@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { readLocationConsent, writeLocationConsent, type LocationConsent } from "@/lib/discovery/location-session";
 
 export function LocationPreferenceControl({ userId }: { userId: string }) {
-  const [consent, setConsent] = useState<LocationConsent>(null);
-
-  useEffect(() => {
-    setConsent(readLocationConsent(userId));
-  }, [userId]);
+  const [consent, setConsent] = useState<LocationConsent>(() => readLocationConsent(userId));
 
   const update = (next: boolean) => {
     writeLocationConsent(userId, next);
