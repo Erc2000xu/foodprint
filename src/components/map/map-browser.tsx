@@ -396,13 +396,19 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
     return () => window.cancelAnimationFrame(frame);
   }, [scrollStorageKey]);
 
-  const replaceSearch = (next: SearchState, nextView = view) => {
+  const replaceSearch = useCallback((next: SearchState, nextView = view) => {
     const queryParams = searchStateToParams(next);
     if (nextView === "list") queryParams.set("view", "list");
     else queryParams.delete("view");
     const query = queryParams.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  };
+  }, [pathname, router, view]);
+
+  const showLocationMessage = useCallback((message: string, durationMs = 0) => {
+    if (locationMessageTimerRef.current !== undefined) window.clearTimeout(locationMessageTimerRef.current);
+    setLocationMessage(message);
+    if (durationMs > 0) locationMessageTimerRef.current = window.setTimeout(() => setLocationMessage(""), durationMs);
+  }, []);
 
   useEffect(() => {
     // Older links may contain the pre-V2.4.2 locationLat/locationLng pair.
@@ -415,11 +421,11 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   }, [params, paramsString, pathname, router]);
 
-  const requestCamera = (intent: MapCameraIntent, userInitiated = true) => {
+  const requestCamera = useCallback((intent: MapCameraIntent, userInitiated = true) => {
     cameraRequestSequenceRef.current += 1;
     setCameraRequest({ id: String(cameraRequestSequenceRef.current), intent, userInitiated });
     return String(cameraRequestSequenceRef.current);
-  };
+  }, []);
 
   const commit = (patch: Partial<SearchState>, options?: { clear?: boolean; cameraIntent?: MapCameraIntent; userIntent?: boolean }) => {
     if (options?.userIntent !== false) sessionIntentRef.current = true;
@@ -429,7 +435,7 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
     replaceSearch(next);
   };
 
-  const switchView = (nextView: DiscoveryView) => {
+  const switchView = useCallback((nextView: DiscoveryView) => {
     if (nextView === "map" && !mapEnabled) {
       setLocateStatus("map_not_ready");
       showLocationMessage(indexStatus === "invalid_coordinates" ? "地图暂不可用，可继续查看完整列表。" : "地图准备好后会继续定位…", 6_000);
@@ -438,7 +444,7 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
     setClusterPlaceIds(undefined);
     setMapReady(false);
     replaceSearch(state, nextView);
-  };
+  }, [indexStatus, mapEnabled, replaceSearch, showLocationMessage, state]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -477,12 +483,6 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, us
     showLocationMessage("");
     commit({}, { clear: true, cameraIntent: "fit_all" });
     closeOpenMenu({ preserveHistory: true });
-  };
-
-  const showLocationMessage = (message: string, durationMs = 0) => {
-    if (locationMessageTimerRef.current !== undefined) window.clearTimeout(locationMessageTimerRef.current);
-    setLocationMessage(message);
-    if (durationMs > 0) locationMessageTimerRef.current = window.setTimeout(() => setLocationMessage(""), durationMs);
   };
 
   const requestNearby = useCallback((purpose: LocatePurpose = "manual") => {
