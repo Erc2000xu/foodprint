@@ -21,10 +21,12 @@ describe("V2.4 map-first layout contracts", () => {
     const css = read("src/app/globals.css");
     expect(reducer).toContain('"summary" | "place_preview" | "viewport_list"');
     expect(css).toContain(".viewport-sheet--summary { height: 76px; }");
-    expect(css).toContain(".viewport-sheet--place_preview { height: 190px; }");
+    expect(css).toContain(".viewport-sheet--place_preview { height: clamp(260px, 34dvh, 360px);");
     expect(css).toContain(".viewport-sheet--viewport_list { height: clamp(320px, 46dvh, 420px); }");
     expect(css).not.toMatch(/viewport-sheet--(peek|card|half|expanded)/);
     expect(css).toContain(".viewport-sheet__content { min-height: 0; flex: 1; overflow-y: auto;");
+    expect(css).toContain(".viewport-sheet__selected-actions { display: grid;");
+    expect(read("src/components/map/viewport-place-sheet.tsx")).toContain("</div><div className=\"viewport-sheet__selected-actions\">");
     expect(css).toContain(".viewport-sheet__place-row > a { min-width: 44px; min-height: 44px;");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });

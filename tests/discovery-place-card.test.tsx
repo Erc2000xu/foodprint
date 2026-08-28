@@ -16,7 +16,7 @@ const basePlace: DiscoveryPlace = {
   city: "北京市",
   district: "北京市顺义区",
   businessAreaName: "后沙峪",
-  pricePerPerson: 0,
+  pricePerPerson: 80,
   recommendedItems: ["烧鹅", "虾饺", "叉烧"],
   bowlStrength: 3,
   goodTagCounts: { tasty: 3, comfortable: 2, good_for_chat: 1, good_value: 1 },
@@ -27,7 +27,7 @@ describe("V1.3.1 discovery place card", () => {
     render(<DiscoveryPlaceCard place={basePlace} href="/place/1" cuisineLabel="粤菜" categoryLabel="餐厅" />);
 
     expect(screen.getByText("粤菜 · 北京市 · 顺义区 · 后沙峪")).toBeInTheDocument();
-    expect(screen.getByText("人均 ¥0")).toBeInTheDocument();
+    expect(screen.getByText("人均约 ¥80")).toBeInTheDocument();
     expect(screen.getByText(/会专门去/)).toBeInTheDocument();
     const opinionCounts = screen.getByLabelText("朋友觉得好在哪儿");
     expect(opinionCounts).toHaveTextContent("吃得香");

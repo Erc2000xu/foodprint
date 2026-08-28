@@ -13,6 +13,8 @@ export type MapFailureCode =
   | "rate_limited"
   | "provider_timeout"
   | "provider_unavailable"
+  | "location_denied"
+  | "location_unavailable"
   | "sdk_rejected"
   | "complete_timeout"
   | "pin_mapping_failed"

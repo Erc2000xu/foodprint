@@ -55,6 +55,7 @@ export function MealRecordForm({ groupPlaceId, placeName, currentOpinion }: { gr
     <input type="hidden" name="group_place_id" value={groupPlaceId} />
     <p className="required-help">带 · 的项目需要填写</p>
     <label>到访日期（必填）<input name="visited_on" type="date" max={new Date().toISOString().slice(0, 10)} required /></label>
+    <label>本次人均（可选）<span className="price-input"><span aria-hidden="true">¥</span><input name="price_per_person" type="text" inputMode="decimal" min="1" max="99999" step="0.01" pattern="^\\d+(?:\\.\\d{1,2})?$" placeholder="例如 80 或 80.50" /></span><small>按这顿最终实付金额 ÷ 就餐人数填写；不确定可留空，最多两位小数。</small></label>
     {currentOpinion && !mustCompleteOpinion && <fieldset className="meal-opinion-choice"><legend>这次和上次的感受一样吗？</legend><label><input checked={!changed} name="opinion_changed" type="radio" value="false" onChange={() => setChanged(false)} /> 一样，保留上次观点</label><label><input checked={changed} name="opinion_changed" type="radio" value="true" onChange={() => setChanged(true)} /> 有变化，更新我的观点</label></fieldset>}
     {!currentOpinion || mustCompleteOpinion ? <input name="opinion_changed" type="hidden" value="true" /> : null}
     {changed && <section className="mark-form-section"><OpinionPicker defaultStrength={currentOpinion?.strength} defaultTags={currentOpinion?.tags} namePrefix="tags" /></section>}

@@ -4,7 +4,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { ContentReadyMarker } from "@/components/navigation/content-ready-marker";
 import { DiscoveryBrowser } from "@/components/map/map-browser";
 import { cuisineOptions } from "@/lib/discovery-options";
-import { getDiscoveryRequestContext, loadDiscoveryIndexV23 } from "@/lib/discovery/server";
+import { getDiscoveryRequestContext, loadDiscoveryIndexV242 } from "@/lib/discovery/server";
 import { measureServerOperation } from "@/lib/performance/server";
 import { createClient } from "@/lib/supabase/server";
 import { readDiscoveryMapRuntimeConfig } from "@/lib/env.server";
@@ -20,9 +20,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ v
   const supabase = await createClient();
   const context = await getDiscoveryRequestContext(supabase, "/");
   if (!context) redirect("/login");
-  const indexResult = await measureServerOperation("/", "discovery.page.total", () => loadDiscoveryIndexV23(supabase), (result) => ({ count: result.places.length, outcome: result.status }));
+  const indexResult = await measureServerOperation("/", "discovery.page.total", () => loadDiscoveryIndexV242(supabase), (result) => ({ count: result.places.length, outcome: result.status }));
   const pagePlaces = indexResult.status === "error" || indexResult.status === "overflow" ? [] : indexResult.places;
   const pageMapConfig = mapRuntimeConfig.enabled && indexResult.status === "complete" && indexResult.places.length > 0 ? mapRuntimeConfig : { enabled: false } as const;
   const mapVariant = requestedView !== "list" && pageMapConfig.enabled;
-  return <AppShell activeNav="发现" groupName={context.groupName} variant={mapVariant ? "map" : "default"}><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser canManage={context.role === "owner" || context.role === "admin"} places={pagePlaces} indexStatus={indexResult.status} cuisineOptions={cuisineOptions} mapRuntimeConfig={pageMapConfig} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
+  return <AppShell activeNav="发现" groupName={context.groupName} variant={mapVariant ? "map" : "default"}><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser userId={context.userId} canManage={context.role === "owner" || context.role === "admin"} places={pagePlaces} indexStatus={indexResult.status} cuisineOptions={cuisineOptions} mapRuntimeConfig={pageMapConfig} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
 }

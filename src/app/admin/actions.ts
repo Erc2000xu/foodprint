@@ -2,6 +2,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getActiveGroupContext } from "@/lib/auth/active-group-context";
 import { encryptInvitationToken } from "@/lib/invitations/token-crypto";
 import { createClient } from "@/lib/supabase/server";
 import { userFacingError } from "@/lib/user-facing-error";
@@ -9,6 +10,14 @@ import { userFacingError } from "@/lib/user-facing-error";
 export type InviteResult = { error?: string; inviteUrl?: string };
 export type ManagementResult = { error?: string; success?: string };
 export type PlaceManagementResult = ManagementResult;
+export type ManagementTab = "active" | "archived" | "candidate" | "hidden";
+export type ContentManagementPage = {
+  items: Array<Record<string, unknown>>;
+  nextCursor: { sortAt: string; id: string } | null;
+  hasMore: boolean;
+  totalCount: number;
+  error?: string;
+};
 
 export async function runBusinessAreaBackfill(previousState: ManagementResult): Promise<ManagementResult> {
   void previousState;
@@ -32,7 +41,7 @@ export async function archiveGroupPlace(_: PlaceManagementResult, formData: Form
   const supabase = await createClient();
   const { error } = await supabase.rpc("archive_group_place", { p_group_place_id: groupPlaceId.data, p_reason: reason.data });
   if (error) return { error: userFacingError(error) };
-  revalidatePath("/"); revalidatePath("/admin"); revalidatePath(`/place/${groupPlaceId.data}`); revalidatePath("/activity");
+  revalidatePath("/"); revalidatePath("/admin"); revalidatePath("/admin/content"); revalidatePath(`/place/${groupPlaceId.data}`); revalidatePath("/activity");
   return { success: "地点已下架；历史内容已保留，可在地点与内容管理中恢复。" };
 }
 
@@ -42,7 +51,7 @@ export async function restoreGroupPlace(_: PlaceManagementResult, formData: Form
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("restore_group_place", { p_group_place_id: groupPlaceId.data });
   if (error) return { error: userFacingError(error) };
-  revalidatePath("/"); revalidatePath("/admin"); revalidatePath(`/place/${groupPlaceId.data}`); revalidatePath("/activity");
+  revalidatePath("/"); revalidatePath("/admin"); revalidatePath("/admin/content"); revalidatePath(`/place/${groupPlaceId.data}`); revalidatePath("/activity");
   return { success: data?.[0]?.current_status === "inactive_no_marks" ? "地点已恢复，等待朋友留下推荐。" : "地点已恢复到发现和地图。" };
 }
 
@@ -52,7 +61,7 @@ export async function restoreHiddenContent(_: PlaceManagementResult, formData: F
   const supabase = await createClient();
   const { data, error } = await supabase.rpc(type.data === "visit" ? "restore_group_visit_record" : "restore_group_photo", { [type.data === "visit" ? "p_visit_record_id" : "p_photo_id"]: id.data });
   if (error) return { error: userFacingError(error) };
-  revalidatePath("/"); revalidatePath("/admin"); revalidatePath("/activity"); if (data) revalidatePath(`/place/${data}`);
+  revalidatePath("/"); revalidatePath("/admin"); revalidatePath("/admin/content"); revalidatePath("/activity"); if (data) revalidatePath(`/place/${data}`);
   return { success: "内容已恢复显示。" };
 }
 
@@ -61,7 +70,7 @@ export async function restorePlaceCandidate(_: PlaceManagementResult, formData: 
   if (!id.success) return { error: "候选地点信息无效。" };
   const supabase = await createClient(); const { error } = await supabase.rpc("restore_place_candidate", { p_candidate_id: id.data });
   if (error) return { error: userFacingError(error) };
-  revalidatePath("/try"); revalidatePath("/admin");
+  revalidatePath("/try"); revalidatePath("/admin"); revalidatePath("/admin/content");
   return { success: "候选已恢复到去试试。" };
 }
 
@@ -165,4 +174,46 @@ export async function completePlaceCuisine(_: ManagementResult, formData: FormDa
   revalidatePath("/admin");
   revalidatePath("/");
   return { success: "已补充菜系信息。" };
+}
+
+export async function loadContentManagement(input: {
+  tab: ManagementTab;
+  status?: "pending" | "dismissed";
+  query?: string;
+  limit?: number;
+  cursor?: { sortAt: string; id: string } | null;
+}): Promise<ContentManagementPage> {
+  const parsed = z.object({
+    tab: z.enum(["active", "archived", "candidate", "hidden"]),
+    status: z.enum(["pending", "dismissed"]).optional(),
+    query: z.string().trim().max(80).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+    cursor: z.object({ sortAt: z.string().datetime({ offset: true }), id: z.string().uuid() }).nullable().optional(),
+  }).safeParse(input);
+  if (!parsed.success) return { items: [], nextCursor: null, hasMore: false, totalCount: 0, error: "管理列表请求无效，请刷新后重试。" };
+  const supabase = await createClient();
+  const context = await getActiveGroupContext(supabase, "/admin/content");
+  if (!context || !["owner", "admin"].includes(context.role)) return { items: [], nextCursor: null, hasMore: false, totalCount: 0, error: "只有 Owner 或 Admin 可以打开管理中心。" };
+  const functionName = parsed.data.tab === "active" || parsed.data.tab === "archived"
+    ? "list_group_place_management_v2_4_2"
+    : parsed.data.tab === "candidate" ? "list_group_candidate_management_v2_4_2" : "list_group_hidden_content_v2_4_2";
+  const status = parsed.data.tab === "active" || parsed.data.tab === "archived" ? parsed.data.tab : parsed.data.tab === "candidate" ? parsed.data.status ?? "pending" : "hidden";
+  const { data, error } = await supabase.rpc(functionName, {
+    p_status: status,
+    p_query: parsed.data.query || null,
+    p_limit: parsed.data.limit ?? 20,
+    p_cursor_sort_at: parsed.data.cursor?.sortAt ?? null,
+    p_cursor_id: parsed.data.cursor?.id ?? null,
+  });
+  if (error) return { items: [], nextCursor: null, hasMore: false, totalCount: 0, error: userFacingError(error, "管理列表暂时无法读取，请稍后重试。") };
+  const row = (Array.isArray(data) ? data[0] : data) as { items?: unknown; next_cursor?: unknown; has_more?: unknown; total_count?: unknown } | null | undefined;
+  const items = Array.isArray(row?.items) ? row.items.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [];
+  const next = row?.next_cursor && typeof row.next_cursor === "object" ? row.next_cursor as { sort_at?: unknown; id?: unknown } : null;
+  const totalCount = Number(row?.total_count ?? 0);
+  return {
+    items,
+    nextCursor: typeof next?.sort_at === "string" && typeof next.id === "string" ? { sortAt: next.sort_at, id: next.id } : null,
+    hasMore: Boolean(row?.has_more),
+    totalCount: Number.isFinite(totalCount) ? Math.max(0, totalCount) : 0,
+  };
 }

@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { userFacingError } from "@/lib/user-facing-error";
 import { recordServerMetric } from "@/lib/performance/server";
 import type { ClientMetricDimensions } from "@/lib/performance/metrics";
+import { parseOptionalPrice } from "@/lib/price";
 
 export type PoiLookup = { error?: string; found?: boolean };
 
@@ -33,7 +34,13 @@ function validationMessage(issues: ReadonlyArray<{ path: readonly unknown[]; cod
   if (field === "attested") return "请确认你亲自去过并愿意推荐。";
   if (field === "primary_category") return "请选择地点类型。";
   if (field === "cuisine_slug") return "请选择主菜系。";
+  if (field === "price_per_person") return "本次人均需填写 1–99999 元，最多两位小数；不确定可以留空。";
   return fallback;
+}
+
+function parseFormPrice(formData: FormData) {
+  const parsed = parseOptionalPrice(formData.get("price_per_person"));
+  return parsed.valid ? parsed.value : undefined;
 }
 
 async function getActiveGroupId() {
@@ -287,6 +294,10 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
   try {
     const activeGroup = await getActiveGroupId();
     if ("error" in activeGroup) return { error: activeGroup.error };
+    const price = parseFormPrice(formData);
+    if (price === undefined && formData.get("price_per_person") !== null && String(formData.get("price_per_person") ?? "").trim() !== "") {
+      return { error: "本次人均需填写 1–99999 元，最多两位小数；不确定可以留空。" };
+    }
     const fields = z.object({
       poi_id: z.string().trim().min(1).max(160), name: z.string().trim().min(1).max(160), branch_name: z.string().trim().max(100).optional(),
       address: z.string().trim().max(300).optional(), city: z.string().trim().max(80).optional(), district: z.string().trim().max(80).optional(),
@@ -303,12 +314,12 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
     }
     const photos = parsedPhotos.pairs;
     const items = (value.dishes ?? "").split(/[,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 12);
-    const { data, error } = await activeGroup.supabase.rpc("save_candidate_promotion_mark", {
+    const { data, error } = await activeGroup.supabase.rpc("save_candidate_promotion_mark_v2_4_2", {
       p_group_id: activeGroup.groupId, p_source_provider: "amap", p_source_poi_id: value.poi_id, p_name: value.name, p_branch_name: value.branch_name ?? null,
       p_address: value.address ?? null, p_city: value.city ?? null, p_district: value.district ?? null, p_latitude: value.latitude, p_longitude: value.longitude,
       p_coordinate_system: "GCJ-02", p_primary_category: value.primary_category, p_overall_rating: [3, 4, 5][value.strength - 1], p_would_recommend: true,
       p_experience_attested: true, p_visited_on: value.visited_on, p_short_review: value.note ?? null, p_recommended_items: items, p_cuisine_slugs: [value.cuisine_slug],
-      p_strength: value.strength, p_tags: value.opinion_tags, p_is_anonymous: value.anonymous === "on",
+      p_strength: value.strength, p_tags: value.opinion_tags, p_is_anonymous: value.anonymous === "on", p_price_per_person: price ?? null,
     });
     if (error || !data?.[0]?.mark_id) return { error: error ? userFacingError(error) : "操作没有完成，请再试一次。" };
     const visitRecordId = data[0].visit_record_id as string;
@@ -332,6 +343,10 @@ export async function savePlaceMark(_: MarkResult, formData: FormData): Promise<
 
 export async function recordPlaceVisit(_: VisitResult, formData: FormData): Promise<VisitResult> {
   try {
+    const price = parseFormPrice(formData);
+    if (price === undefined && formData.get("price_per_person") !== null && String(formData.get("price_per_person") ?? "").trim() !== "") {
+      return { error: "本次人均需填写 1–99999 元，最多两位小数；不确定可以留空。" };
+    }
     const fields = z.object({
       group_place_id: z.string().uuid(), visited_on: z.string().date(), opinion_changed: z.enum(["true", "false"]),
       strength: z.preprocess((value) => value === "" || value === null ? undefined : value, z.coerce.number().int().min(1).max(3).optional()),
@@ -349,9 +364,9 @@ export async function recordPlaceVisit(_: VisitResult, formData: FormData): Prom
     if ("error" in activeGroup) return { error: activeGroup.error };
     const { data: groupPlace } = await activeGroup.supabase.from("group_places").select("id").eq("id", value.group_place_id).eq("group_id", activeGroup.groupId).eq("status", "active").maybeSingle();
     if (!groupPlace) return { error: "地点不存在，或你没有共同地图权限。" };
-    const { data, error } = await activeGroup.supabase.rpc("record_place_visit", {
+    const { data, error } = await activeGroup.supabase.rpc("record_place_visit_v2_4_2", {
       p_group_place_id: value.group_place_id, p_visited_on: value.visited_on, p_opinion_changed: value.opinion_changed === "true", p_strength: value.strength ?? null,
-      p_tags: value.tags, p_note: value.note ?? null, p_dishes: (value.dishes ?? "").split(/[,，]/).map((dish) => dish.trim()).filter(Boolean).slice(0, 12), p_is_anonymous: value.anonymous === "on",
+      p_tags: value.tags, p_note: value.note ?? null, p_dishes: (value.dishes ?? "").split(/[,，]/).map((dish) => dish.trim()).filter(Boolean).slice(0, 12), p_is_anonymous: value.anonymous === "on", p_price_per_person: price ?? null,
     });
     if (error || !data?.[0]?.visit_record_id) return { error: error ? userFacingError(error) : "操作没有完成，请再试一次。" };
     const visitRecordId = data[0].visit_record_id as string;

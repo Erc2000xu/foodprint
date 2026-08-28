@@ -182,6 +182,7 @@ export function MarkFlow({ initialCandidate }: { initialCandidate?: MarkCandidat
       {!alreadyInGroup && <label className="attestation attestation--first"><input name="attested" type="checkbox" required /> <span><b>我确认：这是我亲自去过的地方，以下内容来自真实感受。</b><small>第一次收录的地点，需要是你愿意推荐给朋友的地方。</small></span></label>}
       {alreadyInGroup && <input name="attested" type="hidden" value="on" />}
       <label>到访日期（必填）<input name="visited_on" type="date" max={new Date().toISOString().slice(0, 10)} required /></label>
+      <label>本次人均（可选）<span className="price-input"><span aria-hidden="true">¥</span><input name="price_per_person" type="text" inputMode="decimal" min="1" max="99999" step="0.01" pattern="^\\d+(?:\\.\\d{1,2})?$" placeholder="例如 80 或 80.50" /></span><small>按这顿最终实付金额 ÷ 就餐人数填写；不确定可留空，最多两位小数。</small></label>
       <label>地点类型<select name="primary_category" value={primaryCategory} onChange={(event) => setPrimaryCategory(event.target.value as PlaceCategory)}>{categoryOptions.map(([value, categoryLabel]) => <option key={value} value={value}>{categoryLabel}</option>)}</select></label>
       <label>主菜系（必填）<select name="cuisine_slug" value={cuisine} onChange={(event) => setCuisine(event.target.value as typeof cuisine)}>{cuisineOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <section className="mark-form-section"><OpinionPicker namePrefix="opinion_tags" /></section>

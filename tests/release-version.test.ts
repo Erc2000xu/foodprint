@@ -50,9 +50,14 @@ describe("release version and PWA update contracts", () => {
 
     expect(workflow).toContain("timeout-minutes: 180");
     expect(workflow).toContain("sftp -P");
-    expect(workflow).toContain("put -a %s /opt/foodprint/incoming/%s");
+    expect(workflow).toContain("cp -- \"$RELEASE_BUNDLE\" \"$local_partial\"");
+    expect(workflow).toContain("sftp_command='put'");
+    expect(workflow).toContain("sftp_command='put -a'");
+    expect(workflow).toContain("printf '%s %s /opt/foodprint/incoming/");
+    expect(workflow).toContain("test -f '$remote_partial'");
     expect(workflow).toContain("stat -c '%s'");
-    expect(workflow).toContain("mv -f '/opt/foodprint/incoming/$remote_partial'");
+    expect(workflow).toContain("remote_partial=\"/opt/foodprint/incoming/${local_partial}\"");
+    expect(workflow).toContain("mv -f '$remote_partial' '/opt/foodprint/incoming/$RELEASE_BUNDLE'");
     expect(workflow).not.toMatch(/\bscp\b/);
   });
 });

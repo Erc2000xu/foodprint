@@ -9,6 +9,7 @@ import { displayAmapLocationChain } from "@/lib/amap/location-display";
 import { sceneTagLabels } from "@/lib/mark-options";
 import { PlaceManagementControl } from "@/components/place/place-management-control";
 import { canonicalFriendCount } from "@/lib/discovery/types";
+import { priceSummaryForPlace, priceSummaryLabel } from "@/lib/price";
 
 const bowlLabels = ["", "值得去", "想再去", "会专门去"];
 
@@ -37,6 +38,7 @@ export function DiscoveryPlaceCard({
   const location = displayAmapLocationChain(place.city, place.district, place.businessAreaName);
   const hasOpinionCounts = Object.values(place.goodTagCounts ?? {}).some((count) => count > 0);
   const friendCount = canonicalFriendCount(place);
+  const priceLabel = priceSummaryLabel(priceSummaryForPlace(place));
 
   const locationLabel = location || "位置待补充";
   return <article className="home-place-card-wrap">
@@ -52,7 +54,7 @@ export function DiscoveryPlaceCard({
       <PendingNavigationLink href={href} className="home-place-card__body" pendingLabel="正在打开地点…" onClick={() => onNavigate?.()}>
         <p className="home-place-card__meta">{[cuisineLabel || categoryLabel, locationLabel].filter(Boolean).join(" · ")}</p>
         <h2>{place.name}</h2>
-        <p className="home-place-card__location">{nearbyLabel ? `靠近 ${nearbyLabel} · ` : ""}{place.pricePerPerson !== null && place.pricePerPerson !== undefined ? `人均 ¥${Math.round(place.pricePerPerson)}` : "人均待补充"}</p>
+        <p className="home-place-card__location">{nearbyLabel ? `靠近 ${nearbyLabel} · ` : ""}{priceLabel}</p>
         {place.bowlStrength ? <div className="home-place-card__score-line">
           <BowlIcon level={toBowlLevel(place.bowlStrength)} size="md" />
           <span><b>{bowlLabels[toBowlLevel(place.bowlStrength)]}</b> · {friendCount} 位朋友吃过</span>

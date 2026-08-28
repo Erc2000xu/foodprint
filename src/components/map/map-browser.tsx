@@ -11,17 +11,40 @@ import { ViewportPlaceSheet } from "@/components/map/viewport-place-sheet";
 import { initialViewportSheetState, viewportSheetReducer, type ViewportSheetStatus } from "@/components/map/viewport-place-sheet-reducer";
 import { categoryOptions, sceneTagLabels, sceneTags } from "@/lib/mark-options";
 import { priceOptions } from "@/lib/discovery-options";
-import { defaultSearchState, discoveryDistanceMeters, filterDiscoveryPlaces, hasActiveSearch, searchStateFromParams, searchStateToParams, type DiscoveryLocationFilter, type SearchState } from "@/lib/discovery/search-state";
+import { defaultSearchState, discoveryDistanceMeters, filterDiscoveryPlaces, hasActiveSearch, searchStateFromParams, searchStateToParams, type DiscoveryLocationAnchor, type DiscoveryLocationFilter, type SearchState } from "@/lib/discovery/search-state";
 import { isValidGcj02Coordinate, type BowlStrength, type DiscoveryPlace, type DiscoveryIndexStatus, type GeoOption, type MapViewport } from "@/lib/discovery/types";
 import { placesWithinBounds } from "@/lib/discovery/viewport";
 import { discoveryViewFromParams, type DiscoveryView } from "@/lib/discovery/map-state";
 import { mapFailureMessage, type MapFailure } from "@/lib/amap/map-failure";
 import type { DiscoveryMapRuntimeConfig } from "@/lib/env.server";
 import { reportClientMetric } from "@/lib/performance/client";
+import { readLocationConsent, shouldRequestAutoLocation, shouldShowLocationExplanation, writeLocationConsent, type LocationConsent } from "@/lib/discovery/location-session";
+import type { MapCameraIntent, MapCameraRequest } from "@/lib/discovery/map-camera";
 
 type CuisineOption = readonly [string, string];
 type Origin = { latitude: number; longitude: number };
 type OpenMenu = "location" | "cuisine" | "level" | "inspiration";
+type LocatePurpose = "entry" | "auto" | "manual" | "sort";
+type MapReturnState = { url: string; viewport?: MapViewport; status: ViewportSheetStatus; selectedPlaceId?: string };
+
+// Return state is intentionally in-memory only. A precise map center derived
+// from location must not enter sessionStorage, URLs, cookies, or logs.
+const mapReturnStateCache = new Map<string, MapReturnState>();
+
+function mapReturnStateKey(userId: string, url: string) {
+  return `${userId}:${url}`;
+}
+
+function readMapReturnState(userId: string, url: string) {
+  return mapReturnStateCache.get(mapReturnStateKey(userId, url));
+}
+
+function takeMapReturnState(userId: string, url: string) {
+  const key = mapReturnStateKey(userId, url);
+  const saved = mapReturnStateCache.get(key);
+  if (saved) mapReturnStateCache.delete(key);
+  return saved;
+}
 
 const categoryLabels = Object.fromEntries(categoryOptions) as Record<string, string>;
 const recommendationLabels: Record<BowlStrength, string> = { 1: "值得去", 2: "想再去", 3: "会专门去" };
@@ -32,10 +55,6 @@ function locationKind(candidate: AmapPoiCandidate): DiscoveryLocationFilter["kin
 
 function locationKindLabel(kind: DiscoveryLocationFilter["kind"]) {
   return kind === "district" ? "行政区" : kind === "metro_station" ? "地铁" : "商圈";
-}
-
-function stablePlaceIds(places: readonly DiscoveryPlace[]) {
-  return places.map((place) => place.id).sort().join(",");
 }
 
 function toggleValue<T>(values: readonly T[], value: T) {
@@ -90,6 +109,7 @@ function MapFilterMenu({
 export type DiscoveryBrowserProps = {
   places: DiscoveryPlace[];
   cuisineOptions: readonly CuisineOption[];
+  userId?: string;
   geoOptions?: GeoOption[];
   canManage?: boolean;
   indexStatus?: DiscoveryIndexStatus;
@@ -97,7 +117,7 @@ export type DiscoveryBrowserProps = {
 };
 
 /** The shared BaseSet → FilteredSet → ViewportSet discovery experience. */
-export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, canManage = false, indexStatus = "empty", mapRuntimeConfig = { enabled: false } }: DiscoveryBrowserProps) {
+export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, userId = "anonymous", canManage = false, indexStatus = "empty", mapRuntimeConfig = { enabled: false } }: DiscoveryBrowserProps) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -111,7 +131,8 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   const [mapReady, setMapReady] = useState(false);
   const [pendingLocate, setPendingLocate] = useState(false);
   const [locateRequest, setLocateRequest] = useState(0);
-  const [locateStatus, setLocateStatus] = useState<"idle" | "locating" | "distance_active" | "failed" | "map_not_ready">("idle");
+  const [locateIntent, setLocateIntent] = useState<MapCameraIntent>("manual_locate");
+  const [locateStatus, setLocateStatus] = useState<"idle" | "locating" | "nearby_results" | "nearby_empty" | "distance_active" | "denied" | "timeout" | "unavailable" | "failed" | "map_not_ready">("idle");
   const [useLocateSvgFallback, setUseLocateSvgFallback] = useState(false);
   const [viewport, setViewport] = useState<MapViewport>();
   const [sheet, dispatchSheet] = useReducer(viewportSheetReducer, initialViewportSheetState);
@@ -121,6 +142,7 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   const draftQuery = draftQueryState.source === state.query ? draftQueryState.value : state.query ?? "";
   const setDraftQuery = (value: string) => setDraftQueryState({ source: state.query, value });
   const [origin, setOrigin] = useState<Origin>();
+  const [locationAnchor, setLocationAnchor] = useState<DiscoveryLocationAnchor>();
   const [locationMessage, setLocationMessage] = useState("");
   const [districts, setDistricts] = useState<AmapDistrict[]>([]);
   const [districtError, setDistrictError] = useState("");
@@ -134,6 +156,10 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   const [draftCuisineIds, setDraftCuisineIds] = useState<string[]>(state.cuisineIds);
   const [draftRecommendationLevels, setDraftRecommendationLevels] = useState<BowlStrength[]>(state.recommendationLevels);
   const [restoreViewport, setRestoreViewport] = useState<MapViewport>();
+  const [locationConsent, setLocationConsent] = useState<LocationConsent>(null);
+  const [locationConsentReady, setLocationConsentReady] = useState(false);
+  const [showLocationExplanation, setShowLocationExplanation] = useState(false);
+  const [cameraRequest, setCameraRequest] = useState<MapCameraRequest>();
   const interactionRootRef = useRef<HTMLDivElement>(null);
   const listIntentActionsRef = useRef<HTMLDivElement>(null);
   const menuPanelRef = useRef<HTMLDivElement>(null);
@@ -142,19 +168,26 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   const previousOpenMenuRef = useRef<OpenMenu | undefined>(undefined);
   const menuHistoryRef = useRef(false);
   const returnRestoredRef = useRef(false);
+  const returnStateFoundRef = useRef(false);
   const amapRequestId = useRef(0);
   const amapSearchController = useRef<AbortController | null>(null);
   const locationMessageTimerRef = useRef<number | undefined>(undefined);
+  const locationPurposeRef = useRef<LocatePurpose>("manual");
+  const autoLocationStartedRef = useRef(false);
+  const sessionIntentRef = useRef(false);
+  const sessionPromptResolvedRef = useRef(false);
+  const cameraRequestSequenceRef = useRef(0);
+  const awaitingNearbyViewportRef = useRef(false);
   const cuisineLabelBySlug = useMemo(() => Object.fromEntries(availableCuisines), [availableCuisines]) as Record<string, string>;
   const categoryLabelById = useMemo(() => Object.fromEntries(categoryOptions), []);
   const paramView = discoveryViewFromParams(new URLSearchParams(paramsString), mapEnabled, dataComplete);
   const view = mapDisabledForSession ? "list" : paramView;
   const mapMode = view === "map" && mapEnabled && !mapDisabledForSession;
   const filteredPlaces = useMemo(() => {
-    const result = filterDiscoveryPlaces(places, state, cuisineLabelBySlug);
+    const result = filterDiscoveryPlaces(places, state, cuisineLabelBySlug, locationAnchor);
     if (state.sort !== "distance" || !origin) return result;
     return [...result].sort((left, right) => discoveryDistanceMeters(origin, left) - discoveryDistanceMeters(origin, right) || left.id.localeCompare(right.id));
-  }, [cuisineLabelBySlug, origin, places, state]);
+  }, [cuisineLabelBySlug, locationAnchor, origin, places, state]);
   const viewportPlaces = useMemo(() => viewport && mapMode ? placesWithinBounds(filteredPlaces, viewport.bounds) : filteredPlaces, [filteredPlaces, mapMode, viewport]);
   const mapPlaces = useMemo(() => filteredPlaces.filter(isValidGcj02Coordinate).sort((left, right) => left.id.localeCompare(right.id)), [filteredPlaces]);
   const selectedPlace = sheet.selectedPlaceId ? filteredPlaces.find((place) => place.id === sheet.selectedPlaceId) : undefined;
@@ -162,7 +195,9 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   const hasControls = activeSearch || state.sort === "distance";
   const currentUrl = `${pathname}${paramsString ? `?${paramsString}` : ""}`;
   const scrollStorageKey = `foodprint:scroll:${currentUrl}`;
-  const mapFitRequestKey = stablePlaceIds(mapPlaces);
+  const locationOnEntryEnabled = mapRuntimeConfig.enabled && mapRuntimeConfig.locationOnEntryEnabled !== false;
+  const hasExplicitIntent = sessionIntentRef.current || Boolean(state.query || state.areaIds.length || state.categoryIds.length || state.cuisineIds.length || state.sceneTagIds.length || state.recommendationLevels.length || state.priceRange || state.quickFilter || state.locationFilter || state.sort !== "recommended");
+  const hasReturnState = returnStateFoundRef.current || Boolean(readMapReturnState(userId, currentUrl));
   const filterSummary = [
     state.locationFilter?.name,
     state.categoryIds.length ? state.categoryIds.map((id) => categoryLabelById[id] ?? id).join("、") : "",
@@ -284,22 +319,68 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   useEffect(() => {
     if (!mapMode || returnRestoredRef.current) return;
     returnRestoredRef.current = true;
-    try {
-      const raw = sessionStorage.getItem("foodprint:map-return-state");
-      if (!raw) return;
-      const saved = JSON.parse(raw) as { url?: string; viewport?: MapViewport; status?: ViewportSheetStatus; selectedPlaceId?: string };
-      if (saved.url !== currentUrl) return;
-      let restoreFrame: number | undefined;
-      if (saved.viewport?.center && Number.isFinite(saved.viewport.zoom)) {
-        restoreFrame = window.requestAnimationFrame(() => setRestoreViewport(saved.viewport));
-      }
-      if (saved.status) dispatchSheet({ type: "RESTORE_RETURN_STATE", status: saved.status, selectedPlaceId: saved.selectedPlaceId });
-      sessionStorage.removeItem("foodprint:map-return-state");
-      return () => { if (restoreFrame !== undefined) window.cancelAnimationFrame(restoreFrame); };
-    } catch {
-      // Session restoration is an enhancement; the shared URL state remains authoritative.
+    const saved = takeMapReturnState(userId, currentUrl);
+    if (!saved) return;
+    returnStateFoundRef.current = true;
+    let restoreFrame: number | undefined;
+    if (saved.viewport?.center && Number.isFinite(saved.viewport.zoom)) {
+      restoreFrame = window.requestAnimationFrame(() => setRestoreViewport(saved.viewport));
     }
-  }, [currentUrl, mapMode]);
+    dispatchSheet({ type: "RESTORE_RETURN_STATE", status: saved.status, selectedPlaceId: saved.selectedPlaceId });
+    return () => { if (restoreFrame !== undefined) window.cancelAnimationFrame(restoreFrame); };
+  }, [currentUrl, mapMode, userId]);
+
+  useEffect(() => {
+    if (!mapMode) return;
+    setLocationConsent(readLocationConsent(userId));
+    setLocationConsentReady(true);
+  }, [mapMode, userId]);
+
+  useEffect(() => {
+    const onPreferenceChanged = (event: Event) => {
+      const enabled = (event as CustomEvent<{ enabled?: unknown }>).detail?.enabled;
+      if (typeof enabled !== "boolean") return;
+      setLocationConsent(enabled);
+      if (!enabled) {
+        setOrigin(undefined);
+        setLocationAnchor(undefined);
+        awaitingNearbyViewportRef.current = false;
+        if (locationPurposeRef.current === "auto" || locationPurposeRef.current === "entry") setLocateStatus("idle");
+      }
+    };
+    window.addEventListener("foodprint:location-preference-changed", onPreferenceChanged);
+    return () => window.removeEventListener("foodprint:location-preference-changed", onPreferenceChanged);
+  }, []);
+
+  useEffect(() => {
+    const onSessionEnding = () => {
+      mapReturnStateCache.clear();
+      setOrigin(undefined);
+      setLocationAnchor(undefined);
+      setRestoreViewport(undefined);
+      setLocationConsent(null);
+      setLocationConsentReady(false);
+      awaitingNearbyViewportRef.current = false;
+      autoLocationStartedRef.current = true;
+      setLocateStatus("idle");
+    };
+    window.addEventListener("foodprint:session-ending", onSessionEnding);
+    return () => window.removeEventListener("foodprint:session-ending", onSessionEnding);
+  }, []);
+
+  useEffect(() => {
+    if (!mapMode || !locationConsentReady) return;
+    if (shouldShowLocationExplanation({
+      enabled: locationOnEntryEnabled,
+      consent: locationConsent,
+      hasExplicitIntent,
+      hasReturnState,
+      sessionPromptResolved: sessionPromptResolvedRef.current,
+    })) {
+      sessionPromptResolvedRef.current = true;
+      setShowLocationExplanation(true);
+    }
+  }, [hasExplicitIntent, hasReturnState, locationConsent, locationConsentReady, locationOnEntryEnabled, mapMode]);
 
   const rememberScrollPosition = () => {
     try { sessionStorage.setItem(scrollStorageKey, String(Math.max(0, Math.round(window.scrollY)))); } catch { /* Storage can be disabled. */ }
@@ -323,9 +404,28 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
   };
 
-  const commit = (patch: Partial<SearchState>, options?: { clear?: boolean }) => {
+  useEffect(() => {
+    // Older links may contain the pre-V2.4.2 locationLat/locationLng pair.
+    // Remove it on entry so a legacy URL cannot keep raw coordinates alive.
+    if (!params.get("locationLat") && !params.get("locationLng")) return;
+    const clean = new URLSearchParams(paramsString);
+    clean.delete("locationLat");
+    clean.delete("locationLng");
+    const query = clean.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [params, paramsString, pathname, router]);
+
+  const requestCamera = (intent: MapCameraIntent, userInitiated = true) => {
+    cameraRequestSequenceRef.current += 1;
+    setCameraRequest({ id: String(cameraRequestSequenceRef.current), intent, userInitiated });
+    return String(cameraRequestSequenceRef.current);
+  };
+
+  const commit = (patch: Partial<SearchState>, options?: { clear?: boolean; cameraIntent?: MapCameraIntent; userIntent?: boolean }) => {
+    if (options?.userIntent !== false) sessionIntentRef.current = true;
     const next: SearchState = options?.clear ? { ...defaultSearchState, ...patch } : { ...state, ...patch };
     setClusterPlaceIds(undefined);
+    if (options?.cameraIntent) requestCamera(options.cameraIntent, options.userIntent !== false);
     replaceSearch(next);
   };
 
@@ -343,7 +443,7 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const keyword = draftQuery.trim();
-    commit({ query: keyword || undefined });
+    commit({ query: keyword || undefined }, { cameraIntent: "explicit_search" });
     setAmapError("");
     setAmapSuggestions([]);
     amapSearchController.current?.abort();
@@ -362,19 +462,20 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   };
 
   const selectCuisineCommitted = (slug: string, close = false) => {
-    commit({ cuisineIds: toggleValue(state.cuisineIds, slug) });
+    commit({ cuisineIds: toggleValue(state.cuisineIds, slug) }, { cameraIntent: "explicit_search" });
     if (close) closeOpenMenu({ preserveHistory: true });
   };
   const selectScene = (slug: string, close = false) => {
-    commit({ sceneTagIds: toggleValue(state.sceneTagIds, slug) });
+    commit({ sceneTagIds: toggleValue(state.sceneTagIds, slug) }, { cameraIntent: "explicit_search" });
     if (close) closeOpenMenu({ preserveHistory: true });
   };
   const clearAll = () => {
     setDraftQuery("");
     setAmapSuggestions([]);
     setOrigin(undefined);
+    setLocationAnchor(undefined);
     showLocationMessage("");
-    commit({}, { clear: true });
+    commit({}, { clear: true, cameraIntent: "fit_all" });
     closeOpenMenu({ preserveHistory: true });
   };
 
@@ -384,8 +485,10 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
     if (durationMs > 0) locationMessageTimerRef.current = window.setTimeout(() => setLocationMessage(""), durationMs);
   };
 
-  const requestNearby = () => {
+  const requestNearby = (purpose: LocatePurpose = "manual") => {
     if (locateStatus === "locating") return;
+    locationPurposeRef.current = purpose;
+    if (purpose === "entry" || purpose === "auto") autoLocationStartedRef.current = true;
     if (!mapEnabled) {
       setLocateStatus("map_not_ready");
       showLocationMessage("地图暂不可用，可继续查看完整列表。", 6_000);
@@ -403,8 +506,10 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
       showLocationMessage("地图准备好后会继续定位…", 6_000);
       return;
     }
+    setLocateIntent(purpose === "auto" ? "auto_location" : "manual_locate");
+    requestCamera(purpose === "auto" ? "auto_location" : "manual_locate");
     setLocateStatus("locating");
-    showLocationMessage("正在获取位置…");
+    showLocationMessage(purpose === "sort" ? "正在获取位置并排序…" : "正在获取位置…");
     setLocateRequest((value) => value + 1);
   };
 
@@ -429,20 +534,49 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
     replaceSearch(state, "map");
   };
 
-  const handleLocationResult = (location: Origin) => {
+  const handleLocationResult = (location: Origin, cameraApplied = true) => {
     setOrigin(location);
-    setLocateStatus("distance_active");
-    showLocationMessage("已按距离排序 · 位置不会保存", 3_500);
-    commit({ sort: "distance" });
+    if (locationPurposeRef.current === "sort") {
+      setLocateStatus("distance_active");
+      showLocationMessage("已按距离排序 · 位置仅在本次地图内使用", 3_500);
+      commit({ sort: "distance" }, { userIntent: false });
+      return;
+    }
+    if (!cameraApplied) {
+      awaitingNearbyViewportRef.current = false;
+      setLocateStatus("idle");
+      showLocationMessage("地图已按当前操作显示；位置只在本次请求中使用", 4_000);
+      return;
+    }
+    awaitingNearbyViewportRef.current = true;
+    showLocationMessage("正在显示你附近的地点…");
   };
-  const handleLocationError = () => {
-    setLocateStatus("failed");
-    showLocationMessage("未取得位置，仍可继续浏览朋友推荐。", 6_000);
+  const handleLocationError = (failure: MapFailure) => {
+    const status = failure.code === "location_denied" ? "denied" : failure.code === "provider_timeout" ? "timeout" : failure.code === "location_unavailable" ? "unavailable" : "failed";
+    setLocateStatus(status);
+    awaitingNearbyViewportRef.current = false;
+    const message = status === "denied"
+      ? "定位权限未开启，可在系统设置允许；仍可查看全部地点。"
+      : status === "timeout"
+        ? "定位超时，仍可继续浏览朋友推荐。"
+        : "暂时无法取得位置，仍可继续浏览朋友推荐。";
+    showLocationMessage(message, 6_000);
   };
   const handleViewportSettled = (nextViewport: MapViewport) => {
     setViewport(nextViewport);
     setClusterPlaceIds(undefined);
     if (sheet.selectedPlaceId && !placesWithinBounds([selectedPlace ?? places[0]].filter(Boolean), nextViewport.bounds).some((place) => place.id === sheet.selectedPlaceId)) dispatchSheet({ type: "CLEAR_SELECTION" });
+    if (awaitingNearbyViewportRef.current) {
+      awaitingNearbyViewportRef.current = false;
+      const nearbyPlaces = placesWithinBounds(filteredPlaces, nextViewport.bounds);
+      if (nearbyPlaces.length) {
+        setLocateStatus("nearby_results");
+        showLocationMessage(`已显示你附近的 ${nearbyPlaces.length} 家朋友推荐 · 位置不会保存`, 3_500);
+      } else {
+        setLocateStatus("nearby_empty");
+        showLocationMessage("你附近还没有朋友标记的地点，可查看全部地点。位置不会保存", 6_000);
+      }
+    }
   };
   const handleClusterOpened = (placeIds: string[]) => {
     setClusterPlaceIds(placeIds.length ? placeIds : undefined);
@@ -450,12 +584,22 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
     reportClientMetric("map_cluster_opened", placeIds.length, undefined, { outcome: "success" });
   };
 
-  const rememberMapReturnState = () => {
-    try {
-      sessionStorage.setItem("foodprint:map-return-state", JSON.stringify({ url: currentUrl, viewport, status: sheet.status, selectedPlaceId: sheet.selectedPlaceId }));
-    } catch {
-      // Returning to the detail page remains safe when session storage is unavailable.
+  useEffect(() => {
+    if (!mapMode || !mapReady || !locationConsentReady || showLocationExplanation) return;
+    if (shouldRequestAutoLocation({
+      enabled: locationOnEntryEnabled,
+      consent: locationConsent,
+      hasExplicitIntent,
+      hasReturnState,
+      requestAlreadyStarted: autoLocationStartedRef.current,
+    })) {
+      autoLocationStartedRef.current = true;
+      requestNearby("auto");
     }
+  }, [hasExplicitIntent, hasReturnState, locationConsent, locationConsentReady, locationOnEntryEnabled, mapMode, mapReady, requestNearby, showLocationExplanation]);
+
+  const rememberMapReturnState = () => {
+    mapReturnStateCache.set(mapReturnStateKey(userId, currentUrl), { url: currentUrl, viewport, status: sheet.status, selectedPlaceId: sheet.selectedPlaceId });
   };
   const detailHref = (id: string) => `/place/${id}?returnTo=${encodeURIComponent(currentUrl)}`;
 
@@ -481,14 +625,18 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
 
   const selectDistrict = (district: AmapDistrict) => {
     setAmapSuggestions([]);
-    commit({ query: undefined, areaIds: [], locationFilter: { id: district.adcode, name: district.name, kind: "district" } });
+    setLocationAnchor(undefined);
+    commit({ query: undefined, areaIds: [], locationFilter: { id: district.adcode, name: district.name, kind: "district" } }, { cameraIntent: "explicit_search" });
     closeOpenMenu({ preserveHistory: true });
   };
   const selectAmapLocation = (candidate: AmapPoiCandidate) => {
     const kind = locationKind(candidate);
     setDraftQuery("");
     setAmapSuggestions([]);
-    commit({ query: undefined, areaIds: [], locationFilter: { id: candidate.poiId, name: candidate.name, kind, latitude: candidate.latitude, longitude: candidate.longitude } });
+    setLocationAnchor({ id: candidate.poiId, name: candidate.name, kind, latitude: candidate.latitude, longitude: candidate.longitude });
+    // The AMap coordinates are used only by the provider during search. The
+    // shared URL keeps the selected place identity, never raw coordinates.
+    commit({ query: undefined, areaIds: [], locationFilter: { id: candidate.poiId, name: candidate.name, kind } }, { cameraIntent: "explicit_search" });
     closeOpenMenu({ preserveHistory: true });
   };
 
@@ -520,7 +668,7 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
     setOpenMenu(menu);
   };
   const commitMapDraft = () => {
-    commit({ categoryIds: draftCategoryIds, cuisineIds: draftCuisineIds, recommendationLevels: draftRecommendationLevels });
+    commit({ categoryIds: draftCategoryIds, cuisineIds: draftCuisineIds, recommendationLevels: draftRecommendationLevels }, { cameraIntent: "explicit_search" });
     closeOpenMenu({ preserveHistory: true });
   };
   const clearMapDraft = () => {
@@ -532,41 +680,46 @@ export function DiscoveryBrowser({ places, cuisineOptions: availableCuisines, ca
   };
 
   const locateLabel = locateStatus === "idle"
-    ? "获取当前位置并按距离排序"
+    ? "获取当前位置并回到附近"
     : locateStatus === "locating"
       ? "正在获取位置"
       : locateStatus === "distance_active"
         ? "已按距离排序，重新获取当前位置"
-        : locateStatus === "map_not_ready"
-          ? "地图准备好后获取当前位置"
-          : "重新获取当前位置";
+        : locateStatus === "nearby_results"
+          ? "已显示附近地点，重新获取当前位置"
+          : locateStatus === "nearby_empty"
+            ? "附近暂无地点，重新获取当前位置"
+      : locateStatus === "map_not_ready"
+        ? "地图准备好后获取当前位置"
+        : "重新获取当前位置";
 
-  const mapFilterMenu = openMenu && (openMenu === "location" || openMenu === "cuisine" || openMenu === "level") ? <MapFilterMenu menu={openMenu} districts={districts} districtError={districtError} locationFilter={state.locationFilter} availableCuisines={availableCuisines} draftCategoryIds={draftCategoryIds} draftCuisineIds={draftCuisineIds} draftRecommendationLevels={draftRecommendationLevels} onSelectDistrict={selectDistrict} onClearLocation={() => { commit({ locationFilter: undefined }); closeOpenMenu({ preserveHistory: true }); }} onToggleCategory={(id) => setDraftCategoryIds(toggleValue(draftCategoryIds, id))} onToggleCuisine={(id) => setDraftCuisineIds(toggleValue(draftCuisineIds, id))} onToggleLevel={(level) => setDraftRecommendationLevels(toggleValue(draftRecommendationLevels, level))} onClearDraft={clearMapDraft} onCommitDraft={commitMapDraft} /> : null;
+  const mapFilterMenu = openMenu && (openMenu === "location" || openMenu === "cuisine" || openMenu === "level") ? <MapFilterMenu menu={openMenu} districts={districts} districtError={districtError} locationFilter={state.locationFilter} availableCuisines={availableCuisines} draftCategoryIds={draftCategoryIds} draftCuisineIds={draftCuisineIds} draftRecommendationLevels={draftRecommendationLevels} onSelectDistrict={selectDistrict} onClearLocation={() => { setLocationAnchor(undefined); commit({ locationFilter: undefined }); closeOpenMenu({ preserveHistory: true }); }} onToggleCategory={(id) => setDraftCategoryIds(toggleValue(draftCategoryIds, id))} onToggleCuisine={(id) => setDraftCuisineIds(toggleValue(draftCuisineIds, id))} onToggleLevel={(level) => setDraftRecommendationLevels(toggleValue(draftRecommendationLevels, level))} onClearDraft={clearMapDraft} onCommitDraft={commitMapDraft} /> : null;
 
   const listFilterButtons = <section className="list-discovery-filters" aria-label="发现筛选"><div><strong>餐馆类型</strong>{categoryOptions.map(([id, label]) => <button key={id} type="button" className={state.categoryIds.includes(id) ? "is-selected" : ""} aria-pressed={state.categoryIds.includes(id)} onClick={() => commit({ categoryIds: toggleValue(state.categoryIds, id) })}>{label}</button>)}{availableCuisines.slice(0, 8).map(([id, label]) => <button key={id} type="button" className={state.cuisineIds.includes(id) ? "is-selected" : ""} aria-pressed={state.cuisineIds.includes(id)} onClick={() => commit({ cuisineIds: toggleValue(state.cuisineIds, id) })}>{label}</button>)}</div><div><strong>推荐等级</strong>{([1, 2, 3] as const).map((level) => <button key={level} type="button" className={state.recommendationLevels.includes(level) ? "is-selected" : ""} aria-pressed={state.recommendationLevels.includes(level)} onClick={() => commit({ recommendationLevels: toggleValue(state.recommendationLevels, level) })}>{recommendationLabels[level]}</button>)}</div></section>;
 
-  const activeFilterPanel = hasControls && <section className="active-filter-panel" aria-label="筛选条件"><div className="active-filter-panel__controls"><select value={state.priceRange ?? ""} onChange={(event) => commit({ priceRange: event.target.value as SearchState["priceRange"] || undefined })} aria-label="人均"><option value="">全部人均</option>{priceOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={state.sort} onChange={(event) => { if (event.target.value === "distance") requestNearby(); else commit({ sort: event.target.value as SearchState["sort"] }); }} aria-label="结果排序"><option value="recommended">最值得去</option><option value="recent">最近体验</option><option value="distance">离我最近</option></select></div><div className="active-filter-panel__chips">{state.query && <button type="button" onClick={() => { setDraftQuery(""); commit({ query: undefined }); }}>搜索 · {state.query} ×</button>}{state.locationFilter && <button className={`location-tag location-tag--${state.locationFilter.kind}`} type="button" onClick={() => commit({ locationFilter: undefined })}>{locationKindLabel(state.locationFilter.kind)} · {state.locationFilter.name} ×</button>}{state.categoryIds.map((id) => <button key={`category-${id}`} type="button" onClick={() => commit({ categoryIds: state.categoryIds.filter((value) => value !== id) })}>{categoryLabels[id] ?? id} ×</button>)}{state.cuisineIds.map((id) => <button key={`cuisine-${id}`} type="button" onClick={() => selectCuisineCommitted(id)}>{cuisineLabelBySlug[id] ?? id} ×</button>)}{state.recommendationLevels.map((level) => <button key={`level-${level}`} type="button" onClick={() => commit({ recommendationLevels: state.recommendationLevels.filter((value) => value !== level) })}>{recommendationLabels[level]} ×</button>)}{state.sceneTagIds.map((id) => <button key={`scene-${id}`} type="button" onClick={() => selectScene(id)}>{sceneTagLabels[id] ?? id} ×</button>)}</div><div className="result-heading"><strong>{state.query ? `“${state.query}”找到 ${filteredPlaces.length} 个地点` : `朋友推荐了 ${filteredPlaces.length} 个地点`}</strong><button className="text-button" type="button" onClick={clearAll}>清除筛选</button></div>{locationMessage && <p className="location-note">{locationMessage}</p>}</section>;
+  const activeFilterPanel = hasControls && <section className="active-filter-panel" aria-label="筛选条件"><div className="active-filter-panel__controls"><select value={state.priceRange ?? ""} onChange={(event) => commit({ priceRange: event.target.value as SearchState["priceRange"] || undefined }, { cameraIntent: "explicit_search" })} aria-label="人均"><option value="">全部人均</option>{priceOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><select value={state.sort} onChange={(event) => { if (event.target.value === "distance") requestNearby("sort"); else commit({ sort: event.target.value as SearchState["sort"] }); }} aria-label="结果排序"><option value="recommended">最值得去</option><option value="recent">最近体验</option><option value="distance">离我最近</option></select></div><div className="active-filter-panel__chips">{state.query && <button type="button" onClick={() => { setDraftQuery(""); commit({ query: undefined }, { cameraIntent: "explicit_search" }); }}>搜索 · {state.query} ×</button>}{state.locationFilter && <button className={`location-tag location-tag--${state.locationFilter.kind}`} type="button" onClick={() => commit({ locationFilter: undefined }, { cameraIntent: "explicit_search" })}>{locationKindLabel(state.locationFilter.kind)} · {state.locationFilter.name} ×</button>}{state.categoryIds.map((id) => <button key={`category-${id}`} type="button" onClick={() => commit({ categoryIds: state.categoryIds.filter((value) => value !== id) }, { cameraIntent: "explicit_search" })}>{categoryLabels[id] ?? id} ×</button>)}{state.cuisineIds.map((id) => <button key={`cuisine-${id}`} type="button" onClick={() => selectCuisineCommitted(id)}>{cuisineLabelBySlug[id] ?? id} ×</button>)}{state.recommendationLevels.map((level) => <button key={`level-${level}`} type="button" onClick={() => commit({ recommendationLevels: state.recommendationLevels.filter((value) => value !== level) }, { cameraIntent: "explicit_search" })}>{recommendationLabels[level]} ×</button>)}{state.sceneTagIds.map((id) => <button key={`scene-${id}`} type="button" onClick={() => selectScene(id)}>{sceneTagLabels[id] ?? id} ×</button>)}</div><div className="result-heading"><strong>{state.query ? `“${state.query}”找到 ${filteredPlaces.length} 个地点` : `朋友推荐了 ${filteredPlaces.length} 个地点`}</strong><button className="text-button" type="button" onClick={clearAll}>清除筛选</button></div>{locationMessage && <p className="location-note">{locationMessage}</p>}</section>;
 
   return <section className={`home-explorer${mapMode ? " home-explorer--map" : ""}`} aria-label="寻找地点">
     {mapMode ? <section className="dynamic-map-shell" aria-label="发现地点的动态地图" style={{ "--map-sheet-height": `${sheetHeight}px` } as CSSProperties}>
       <div ref={interactionRootRef} className="map-overlay-controls">
         <form className="map-search" onSubmit={submit}><span aria-hidden="true">⌕</span><input value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} placeholder="搜餐厅、区域、商圈、菜系" aria-label="搜索餐厅、区域、商圈、地铁、菜系或推荐菜" /><button type="submit" disabled={isSearchingAmap} aria-label="提交搜索">{isSearchingAmap ? "…" : "搜索"}</button></form>
         {(amapSuggestions.length > 0 || amapError) && <div className="amap-search-suggestions map-search-suggestions" aria-label="地点建议"><p>地点建议</p>{amapSuggestions.map((candidate) => <button key={candidate.poiId} type="button" onClick={() => selectAmapLocation(candidate)}><span className={`location-tag location-tag--${locationKind(candidate)}`}>{locationKindLabel(locationKind(candidate))}</span><strong>{candidate.name}</strong><small>{candidate.district || candidate.address || "地点信息待补充"}</small></button>)}{amapError && <small className="location-note">暂时无法显示地点建议，食迹里的地点仍可继续筛选。</small>}</div>}
-        {suggestions.length > 0 && <div className="search-suggestions map-search-suggestions" aria-label="站内搜索建议">{suggestions.map((suggestion) => <button key={`${suggestion.type}-${suggestion.id}`} type="button" onClick={() => { if (suggestion.type === "cuisine") selectCuisineCommitted(suggestion.id); else { setDraftQuery(suggestion.label); commit({ query: suggestion.label }); } }}>{suggestion.label}<small>{suggestion.description}</small></button>)}</div>}
+        {suggestions.length > 0 && <div className="search-suggestions map-search-suggestions" aria-label="站内搜索建议">{suggestions.map((suggestion) => <button key={`${suggestion.type}-${suggestion.id}`} type="button" onClick={() => { if (suggestion.type === "cuisine") selectCuisineCommitted(suggestion.id); else { setDraftQuery(suggestion.label); commit({ query: suggestion.label }, { cameraIntent: "explicit_search" }); } }}>{suggestion.label}<small>{suggestion.description}</small></button>)}</div>}
         <div className="map-filter-row" aria-label="快捷筛选"><button ref={(node) => { triggerRefs.current.location = node; }} className={`filter-chip${state.locationFilter ? " filter-chip--active" : ""}`} type="button" aria-expanded={openMenu === "location"} aria-controls="map-filter-menu-location" onClick={() => openFilterMenu("location")}>地区{state.locationFilter ? ` · ${state.locationFilter.name}` : ""}</button><button ref={(node) => { triggerRefs.current.cuisine = node; }} className={`filter-chip${state.categoryIds.length || state.cuisineIds.length ? " filter-chip--active" : ""}`} type="button" aria-expanded={openMenu === "cuisine"} aria-controls="map-filter-menu-cuisine" onClick={() => openFilterMenu("cuisine")}>餐馆类型{state.cuisineIds.length ? ` · ${state.cuisineIds.length}` : state.categoryIds.length ? ` · ${state.categoryIds.length}` : ""}</button><button ref={(node) => { triggerRefs.current.level = node; }} className={`filter-chip${state.recommendationLevels.length ? " filter-chip--active" : ""}`} type="button" aria-expanded={openMenu === "level"} aria-controls="map-filter-menu-level" onClick={() => openFilterMenu("level")}>推荐等级{state.recommendationLevels.length ? ` · ${state.recommendationLevels.length}` : ""}</button>{activeSearch && <button type="button" className="filter-chip filter-chip--clear" onClick={clearAll}>清除</button>}</div><div ref={filterPopoverLayerRef} className="map-filter-popover-layer" style={{ left: filterPopoverLeft }} aria-live="polite">{mapFilterMenu}</div>
         <div className="map-overlay-actions"><button type="button" className="map-list-switch" onClick={() => switchView("list")}>列表</button><strong>当前范围 · {viewportPlaces.length} 家</strong></div>
       </div>
-      <DynamicMapAdapter key={retryGeneration} apiKey={mapRuntimeConfig.enabled ? mapRuntimeConfig.jsApiKey : ""} pins={mapPlaces} selectedPlaceId={sheet.selectedPlaceId} userLocation={origin} retryGeneration={retryGeneration} locateRequest={locateRequest} fitRequestKey={mapFitRequestKey} restoreViewport={restoreViewport} padding={{ top: 150, right: 24, bottom: sheetHeight + 88, left: 24 }} onReady={() => { setMapReady(true); if (pendingLocate) { setPendingLocate(false); setLocateStatus("locating"); showLocationMessage("正在获取位置…"); setLocateRequest((value) => value + 1); } reportClientMetric("amap_ready", 1, undefined, { outcome: "success" }); if (retryGeneration > 0) reportClientMetric("map_retry_result", 1, undefined, { outcome: "success" }); }} onViewportSettled={handleViewportSettled} onSelectPlace={(placeId) => { dispatchSheet({ type: "SELECT_PLACE", placeId }); reportClientMetric("map_pin_selected", 1, undefined, { outcome: "success" }); }} onClearSelection={() => dispatchSheet({ type: "CLEAR_SELECTION" })} onClusterOpened={handleClusterOpened} onLocationResult={handleLocationResult} onLocationError={handleLocationError} onFatalError={reportMapFailure} />
-      <button type="button" className={`map-locate-button map-locate-button--${locateStatus}`} onClick={requestNearby} aria-label={locateLabel} aria-busy={locateStatus === "locating"} disabled={locateStatus === "locating"}>
+      {showLocationExplanation && <aside className="location-entry-card" aria-label="附近定位说明"><p className="eyebrow">发现页提示</p><h2>先看看你附近</h2><p>允许后，这次打开发现页会用一次当前位置把地图移到附近。位置只在当前地图内使用，不会保存或分享。</p><div><button type="button" className="primary-button" onClick={() => { writeLocationConsent(userId, true); setLocationConsent(true); setShowLocationExplanation(false); reportClientMetric("location_entry_prompt_accepted", 1, undefined, { outcome: "success" }); requestNearby("entry"); }}>使用当前位置</button><button type="button" className="text-button" onClick={() => { writeLocationConsent(userId, false); setLocationConsent(false); setShowLocationExplanation(false); reportClientMetric("location_entry_prompt_declined", 1, undefined, { outcome: "success" }); }}>暂不</button></div></aside>}
+      <DynamicMapAdapter key={retryGeneration} apiKey={mapRuntimeConfig.enabled ? mapRuntimeConfig.jsApiKey : ""} pins={mapPlaces} selectedPlaceId={sheet.selectedPlaceId} userLocation={origin} retryGeneration={retryGeneration} locateRequest={locateRequest} locateIntent={locateIntent} cameraRequest={cameraRequest} restoreViewport={restoreViewport} padding={{ top: 150, right: 24, bottom: sheetHeight + 88, left: 24 }} onReady={() => { setMapReady(true); if (pendingLocate) { setPendingLocate(false); setLocateIntent(locationPurposeRef.current === "auto" ? "auto_location" : "manual_locate"); requestCamera(locationPurposeRef.current === "auto" ? "auto_location" : "manual_locate", locationPurposeRef.current !== "auto"); setLocateStatus("locating"); showLocationMessage(locationPurposeRef.current === "sort" ? "正在获取位置并排序…" : "正在获取位置…"); setLocateRequest((value) => value + 1); } reportClientMetric("amap_ready", 1, undefined, { outcome: "success" }); if (retryGeneration > 0) reportClientMetric("map_retry_result", 1, undefined, { outcome: "success" }); }} onViewportSettled={handleViewportSettled} onSelectPlace={(placeId) => { requestCamera("explicit_search", true); dispatchSheet({ type: "SELECT_PLACE", placeId }); reportClientMetric("map_pin_selected", 1, undefined, { outcome: "success" }); }} onClearSelection={() => dispatchSheet({ type: "CLEAR_SELECTION" })} onClusterOpened={handleClusterOpened} onLocationResult={handleLocationResult} onLocationError={handleLocationError} onFatalError={reportMapFailure} />
+      <button type="button" className={`map-locate-button map-locate-button--${locateStatus}`} onClick={() => requestNearby("manual")} aria-label={locateLabel} aria-busy={locateStatus === "locating"} disabled={locateStatus === "locating"}>
         {useLocateSvgFallback ? <img src="/icons/map-controls/locate-current.svg" width={26} height={26} alt="" aria-hidden="true" draggable={false} /> : <img src="/icons/map-controls/locate-current-26.png" srcSet="/icons/map-controls/locate-current-26.png 1x, /icons/map-controls/locate-current-52.png 2x, /icons/map-controls/locate-current-78.png 3x" width={26} height={26} alt="" aria-hidden="true" draggable={false} onError={() => setUseLocateSvgFallback(true)} />}
       </button>
-      <ViewportPlaceSheet places={clusterPlaceIds?.length ? viewportPlaces.filter((place) => clusterPlaceIds.includes(place.id)) : viewportPlaces} summaryCount={viewportPlaces.length} selectedPlace={selectedPlace} status={sheet.status} filterSummary={filterSummary} onStatusChange={(status) => dispatchSheet({ type: "SET_STATUS", status })} onSelectPlace={(placeId) => { setClusterPlaceIds(undefined); dispatchSheet({ type: "SELECT_PLACE", placeId }); reportClientMetric("viewport_sheet_place_opened", 1, undefined, { outcome: "success" }); }} onClearSelection={() => { setClusterPlaceIds(undefined); dispatchSheet({ type: "CLEAR_SELECTION" }); }} onOpenDetail={rememberMapReturnState} onOpenViewportList={() => { setClusterPlaceIds(undefined); dispatchSheet({ type: "OPEN_VIEWPORT_LIST" }); reportClientMetric("viewport_sheet_opened", 1, undefined, { outcome: "success" }); }} onOpenAll={() => switchView("list")} onHeightChange={setSheetHeight} detailHref={detailHref} />
+      <ViewportPlaceSheet places={clusterPlaceIds?.length ? viewportPlaces.filter((place) => clusterPlaceIds.includes(place.id)) : viewportPlaces} summaryCount={viewportPlaces.length} selectedPlace={selectedPlace} status={sheet.status} filterSummary={filterSummary} onStatusChange={(status) => dispatchSheet({ type: "SET_STATUS", status })} onSelectPlace={(placeId) => { requestCamera("explicit_search", true); setClusterPlaceIds(undefined); dispatchSheet({ type: "SELECT_PLACE", placeId }); reportClientMetric("viewport_sheet_place_opened", 1, undefined, { outcome: "success" }); }} onClearSelection={() => { setClusterPlaceIds(undefined); dispatchSheet({ type: "CLEAR_SELECTION" }); }} onOpenDetail={rememberMapReturnState} onOpenViewportList={() => { setClusterPlaceIds(undefined); dispatchSheet({ type: "OPEN_VIEWPORT_LIST" }); reportClientMetric("viewport_sheet_opened", 1, undefined, { outcome: "success" }); }} onOpenAll={() => switchView("list")} onHeightChange={setSheetHeight} detailHref={detailHref} />
       {locationMessage && <p className="map-location-toast" role="status" aria-live="polite">{locationMessage}</p>}
     </section> : <>
       <header className="home-explorer__header"><div><p className="eyebrow">发现 · 朋友吃过的地方</p><h1 className="creative-title">今天想去哪儿吃？</h1><p>从朋友吃过的地方里，选一家合适的。</p></div><div className="map-view-toggle" role="group" aria-label="切换发现列表或地图"><button className="is-active" type="button">列表</button><button type="button" onClick={() => switchView("map")}>地图</button></div></header>
       <form className="intent-search" onSubmit={submit}><span aria-hidden="true">⌕</span><input value={draftQuery} onChange={(event) => setDraftQuery(event.target.value)} placeholder="搜餐厅、区域、菜系或推荐菜" aria-label="搜索餐厅、区域、商圈、地铁、菜系或推荐菜" /><button type="submit" disabled={isSearchingAmap}>{isSearchingAmap ? "搜索中…" : "搜索"}</button><small>可搜餐厅、区域、商圈、地铁、菜系或推荐菜。</small></form>
       {(amapSuggestions.length > 0 || amapError) && <div className="amap-search-suggestions" aria-label="地点建议"><p>地点建议</p>{amapSuggestions.map((candidate) => <button key={candidate.poiId} type="button" onClick={() => selectAmapLocation(candidate)}><span className={`location-tag location-tag--${locationKind(candidate)}`}>{locationKindLabel(locationKind(candidate))}</span><strong>{candidate.name}</strong><small>{candidate.district || candidate.address || "地点信息待补充"}</small></button>)}{amapError && <small className="location-note">暂时无法显示地点建议，食迹里的地点仍可继续筛选。</small>}</div>}
-      {suggestions.length > 0 && <div className="search-suggestions" aria-label="站内搜索建议">{suggestions.map((suggestion) => <button key={`${suggestion.type}-${suggestion.id}`} type="button" onClick={() => { if (suggestion.type === "cuisine") selectCuisineCommitted(suggestion.id); else { setDraftQuery(suggestion.label); commit({ query: suggestion.label }); } }}>{suggestion.label}<small>{suggestion.description}</small></button>)}</div>}
+      {suggestions.length > 0 && <div className="search-suggestions" aria-label="站内搜索建议">{suggestions.map((suggestion) => <button key={`${suggestion.type}-${suggestion.id}`} type="button" onClick={() => { if (suggestion.type === "cuisine") selectCuisineCommitted(suggestion.id); else { setDraftQuery(suggestion.label); commit({ query: suggestion.label }, { cameraIntent: "explicit_search" }); } }}>{suggestion.label}<small>{suggestion.description}</small></button>)}</div>}
       <div className="intent-actions" aria-label="寻找地点的方式" ref={listIntentActionsRef}><div className="intent-action"><button type="button" aria-expanded={openMenu === "location"} aria-controls="intent-menu-location" onClick={() => openFilterMenu("location")}>按地点找</button>{openMenu === "location" && <div ref={menuPanelRef} className="intent-menu intent-menu--grouped intent-menu--left" id="intent-menu-location"><section><b>行政区</b>{districts.length === 0 && !districtLoaded && <small>正在加载行政区…</small>}{districts.map((district) => <button className={state.locationFilter?.id === district.adcode ? "is-selected" : ""} key={district.adcode} type="button" onClick={() => selectDistrict(district)}>{district.name}</button>)}{districtError && <small>{districtError}</small>}</section><section><b>商圈 / 地铁</b><small>搜索并选择一个地点；商圈按 3 公里、地铁按 1.5 公里筛选。</small></section></div>}</div><div className="intent-action"><button ref={(node) => { triggerRefs.current.cuisine = node; }} type="button" aria-expanded={openMenu === "cuisine"} aria-controls="intent-menu-cuisine" onClick={() => openFilterMenu("cuisine")}>按菜系找</button>{openMenu === "cuisine" && <div ref={menuPanelRef} className="intent-menu intent-menu--center" id="intent-menu-cuisine">{availableCuisines.map(([slug, label]) => <button className={state.cuisineIds.includes(slug) ? "is-selected" : ""} key={slug} type="button" onClick={() => selectCuisineCommitted(slug, true)}>{label}</button>)}</div>}</div><div className="intent-action"><button ref={(node) => { triggerRefs.current.inspiration = node; }} type="button" aria-expanded={openMenu === "inspiration"} aria-controls="intent-menu-inspiration" onClick={() => openFilterMenu("inspiration")}>找灵感</button>{openMenu === "inspiration" && <div ref={menuPanelRef} className="intent-menu intent-menu--right" id="intent-menu-inspiration">{sceneTags.map(([slug, label]) => <button className={state.sceneTagIds.includes(slug) ? "is-selected" : ""} key={slug} type="button" onClick={() => selectScene(slug, true)}>{label}</button>)}</div>}</div></div>
       {places.length > 0 && listFilterButtons}
       {activeFilterPanel}

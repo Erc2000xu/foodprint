@@ -36,11 +36,22 @@ describe("V1 discovery SearchState", () => {
     expect(searchStateToParams(coffee).get("quick")).toBe("coffee");
   });
 
-  it("round-trips an AMap location suggestion and applies its documented radius", () => {
+  it("round-trips an AMap location identity without persisting raw coordinates", () => {
     const selected = searchStateFromParams(new URLSearchParams("locationKind=business_district&locationName=%E7%8E%8B%E5%BA%9C%E4%BA%95&locationId=poi-1&locationLat=39.9&locationLng=116.4"));
     expect(selected.locationFilter?.name).toBe("王府井");
     expect(filterDiscoveryPlaces(places, selected, labels).map((place) => place.id)).toEqual(["wangfujing-cantonese"]);
     expect(searchStateToParams(selected).get("locationKind")).toBe("business_district");
+    expect(searchStateToParams(selected).toString()).not.toContain("locationLat");
+    expect(searchStateToParams(selected).toString()).not.toContain("locationLng");
+  });
+
+  it("keeps the existing business-district radius filter in memory without serializing the POI anchor", () => {
+    const selected = searchStateFromParams(new URLSearchParams("locationKind=business_district&locationName=%E7%8E%8B%E5%BA%9C%E4%BA%95&locationId=poi-1"));
+    const farAway = { ...places[0], id: "far-away", latitude: 39.95, longitude: 116.4 };
+    const anchor = { id: "poi-1", name: "王府井", kind: "business_district" as const, latitude: 39.9, longitude: 116.4 };
+    expect(filterDiscoveryPlaces([...places, farAway], selected, labels, anchor).map((place) => place.id)).toEqual(["wangfujing-cantonese"]);
+    expect(searchStateToParams(selected).toString()).not.toContain("locationLat");
+    expect(searchStateToParams(selected).toString()).not.toContain("locationLng");
   });
 
   it("matches an AMap district exactly after tolerating the historical city prefix", () => {
@@ -63,5 +74,11 @@ describe("V1 discovery SearchState", () => {
     const selected = searchStateFromParams(new URLSearchParams("category=cafe&level=1"));
     const result = filterDiscoveryPlaces(places, selected, labels);
     expect(result.map((place) => place.id)).toEqual(["sanlitun-coffee"]);
+  });
+
+  it("uses the canonical aggregate for price filters instead of the legacy latest-price alias", () => {
+    const selected = searchStateFromParams(new URLSearchParams("price=100_200"));
+    const staleAlias = { ...places[0], pricePerPerson: 168, priceSummary: { avgPricePerPerson: null, priceSampleCount: 0 } };
+    expect(filterDiscoveryPlaces([staleAlias], selected, labels)).toEqual([]);
   });
 });
