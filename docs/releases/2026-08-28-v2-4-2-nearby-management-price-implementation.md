@@ -2,12 +2,12 @@
 
 日期：2026-08-28  
 Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`  
-状态：代码、向前兼容 migration、数据库 schema lint、类型检查、完整测试与生产构建已通过；代码 lint、真机、PWA 与生产门禁仍待完成
+状态：代码、向前兼容 migration、数据库 schema lint、类型检查、完整测试、生产构建、PR 官方 CI 与生产 migration history 审计已通过；待合入 main、正式发布、真机/PWA 验收与生产观察
 
 ## M0 与基线
 
 - 已通读本版本 Spec、`docs/PRODUCT.md`、`docs/ROADMAP.md`、`docs/DEVELOPMENT_WORKFLOW.md`、`docs/RELEASE_SOP.md`、`docs/SECURITY_COMPLIANCE_BASELINE.md`，以及 V2.4/V2.4.1 地图、照片上传恢复和证据交接文档。
-- 开始时分支为 `codex/fix-release-transfer`，HEAD 为 `d914dc0`。仓库已有用户改动；实现只在目标文件追加/修改，没有覆盖既有改动，也没有修改已发布 migration、部署生产、合并 `main` 或删除分支。
+- 开始时分支为 `codex/fix-release-transfer`，HEAD 为 `d914dc0`。仓库已有用户改动；实现只在目标文件追加/修改，没有覆盖既有改动，也没有修改已发布 migration。PR #44 已整合远端 main 的照片/发布修复，候选提交为 `5a7f858d`。
 - M0 根因：定位只由手动入口触发且与距离排序耦合；定位回调/后续 fit 可能争抢镜头；管理页把有上限的旧列表直接堆叠；预览态固定 `190px` 且操作区在滚动内容内；V1.3 `visit_records` 没有价格字段，读模型取最新价而非有效到访平均。
 - 仓库分支检查还发现 Git 有一个既存的异常 ref 名称警告：`refs/heads/codex/v1-4-typography-copy 2`。本次未触碰该 ref。
 
@@ -46,7 +46,8 @@ Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`
 ## 数据迁移与回填
 
 - 新 migration 是 forward-only，未改写 29 个已发布 migration。
-- 计划中的确定性回填 SQL 已加入；本次未连接生产库。干净 `--no-seed` 本地库重放后查询到 `visit_records_total=0|price_nonnull=0|legacy_links=0`，所以本地本次回填候选为 0；这不代表生产回填数量。生产数量仍需发布窗口执行 migration 后从 PostgreSQL `NOTICE`/回填查询记录确认。
+- GitHub 生产 migration history audit run `33159484029` 已通过：本地和生产均到 `20260818100000`，未发现缺失或漂移的历史版本。
+- 计划中的确定性回填 SQL 已加入；本地干净 `--no-seed` 库查询到 `visit_records_total=0|price_nonnull=0|legacy_links=0`，所以本地本次回填候选为 0；这不代表生产回填数量。生产数量仍需正式发布窗口执行 migration 后从 PostgreSQL `NOTICE`/回填查询记录确认。
 - 没有执行任何破坏性 down migration，也没有物理删除旧字段、旧 RPC 或照片数据。
 
 ## 自动化验证证据
@@ -55,7 +56,7 @@ Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`
 | --- | --- | --- |
 | 改动相关 TypeScript 转译语法检查 | 通过 | Node `typescript.transpileModule` 最终检查 33 个 TS/TSX 文件，输出 `transpile syntax OK: 33 files` |
 | `git diff --check` | 通过 | 目标改动文件无空白错误 |
-| `npm run lint` / 定向 lint | 未完成 | ESLint 配置加载超过 5 分钟无规则输出，单独测量 `typescript-eslint` 依赖导入也未返回；已 Ctrl-C（exit 130），没有得到可宣称通过的 lint 结果 |
+| `npm run lint` / PR 官方 lint | 通过 | PR CI run `33159310580` 的 application job 通过；本机直接 ESLint 仍会无输出卡住，不能作为本地 lint 证据 |
 | `npm run typecheck` | 通过 | 修复定位说明 metric 名称联合类型后，`npm run typecheck` exit 0 |
 | `npm test` | 通过 | 使用工作区 bundled Node v24.19.0 按项目默认配置运行，47 个文件、151 条测试全部通过 |
 | V2.4.2 纯合同/逻辑定向测试 | 通过 | 5 个文件、14 条测试通过：价格、定位偏好、地图镜头、SQL/隐私合同、移动视口 |
@@ -64,13 +65,15 @@ Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`
 | `SUPABASE_TELEMETRY_DISABLED=1 supabase db reset --local --no-seed` | 通过 | 全部历史 migration 与 `20260827090000_v2_4_2_nearby_management_price.sql` clean replay 成功 |
 | `SUPABASE_TELEMETRY_DISABLED=1 supabase db lint --local` | 通过 | 二次 clean replay 后返回 `No schema errors found` |
 | 本地只读 SQL 合同检查 | 通过 | migration 登记 `1`；价格约束 `1`；核心表 RLS 全部 `true`；V2.4.2 RPC `9` 个、旧关键 RPC `6` 个均共存 |
+| GitHub PR CI | 通过 | run `33159310580`：application 与 migration-integrity 均成功；官方 application 包含 lint、typecheck、全量测试、production build 与 ICP build check |
+| Production migration history audit | 通过 | run `33159484029`：production history 与 main 本地 history 均到 `20260818100000` |
 
 已新增的合同覆盖：价格边界/平均、定位偏好、相机优先级与过期回调、原始坐标不进入共享状态、SQL/RPC/grant/旧 RPC 保留、审计不带金额、Owner/Admin 管理分页与重试、表单字段、Bottom Sheet 动态布局、移动最小点击区及照片链路保护。
 
 ## 外部门禁与已知限制
 
-- 本地 clean replay、SQL/RLS/RPC 结构检查、完整测试和生产构建已通过；由于使用 `--no-seed` 空库，没有产生可代表生产的回填样本，生产回填数仍是外部门禁。
-- 代码 lint 仍未取得结果：ESLint/Next 配置加载超过 5 分钟无规则输出，单独导入 `typescript-eslint` 也未返回；typecheck 和完整 Vitest 已通过，不能用它们替代 lint。
+- 本地 clean replay、SQL/RLS/RPC 结构检查、完整测试、生产构建和 PR 官方 lint/构建已通过；由于本地使用 `--no-seed` 空库，没有产生可代表生产的回填样本，生产回填数仍需发布窗口确认。
+- 本机 ESLint 仍会无输出卡住，但同一候选提交的 GitHub 官方 application job 已通过 lint；本地卡住是开发机工具表现，不再阻塞候选发布。
 - 没有完成 iOS Safari、Android Chrome、已安装 PWA、桌面浏览器、北京定位/上海数据情景和 200% 字体的真机验收；也没有完成生产 canary、回滚演练与 24 小时观察。
 - AMap 选中的商圈/地铁 POI 的半径匹配锚点只保存在本次页面内存；分享/刷新后只保留 POI 身份与文本，不能在无 provider 锚点时复现精确半径，退回身份字段匹配。这是隐私边界下的已知限制。
 - 发现 RPC 复用 V2.4.1 的 V2.3 读模型并仅追加价格聚合；清理历史 RPC/生成类型仍应另版进行。
@@ -84,4 +87,4 @@ Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`
 5. 只有在经过负责人批准、备份确认和专门数据库变更评审后，才处理任何数据库结构清理；本版本不提供 `DROP COLUMN`、`DROP FUNCTION` 或删除回填数据的自动脚本。
 6. 保持 V2.4.1 照片 Worker/WASM、缩略图与私有 Storage 边界原样，不通过回滚本版本去删除或重建照片数据。
 
-生产部署、main 合并、分支删除和生产数据操作均未执行。
+生产部署、main 合并、分支删除和生产数据操作均未执行；下一步是合入 PR #44，然后从 main 手动运行 `Release production` 并输入 `DEPLOY_PRODUCTION`。
