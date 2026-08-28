@@ -2,6 +2,7 @@ import type { DiscoveryIndexResult, DiscoveryPlace, MapDiscoveryPlace } from "@/
 import { withLocationStatus, isValidGcj02Coordinate } from "@/lib/discovery/types";
 import { getActiveGroupContext } from "@/lib/auth/active-group-context";
 import { measureServerOperation, recordServerMetric } from "@/lib/performance/server";
+import { priceSummaryFromDatabase } from "@/lib/price";
 
 type SupabaseLike = Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>;
 
@@ -38,6 +39,10 @@ function discoveryPlaceFromIndexRow(row: DiscoveryIndexRow): DiscoveryPlace {
   const recommendCount = Math.max(0, Math.round(Number(row.recommend_count ?? friendCount)));
   const bowlValue = Number(row.bowl_strength);
   const bowlStrength = bowlValue >= 3 ? 3 : bowlValue >= 2 ? 2 : bowlValue >= 1 ? 1 : null;
+  const hasAggregatePrice = "avg_price_per_person" in row || "price_sample_count" in row;
+  const priceSummary = hasAggregatePrice
+    ? priceSummaryFromDatabase(row.avg_price_per_person, row.price_sample_count)
+    : priceSummaryFromDatabase(row.price_per_person, row.price_per_person === null || row.price_per_person === undefined ? 0 : 1);
   const place = withLocationStatus({
     id: String(row.group_place_id ?? ""),
     name: String(row.place_name ?? ""),
@@ -52,7 +57,8 @@ function discoveryPlaceFromIndexRow(row: DiscoveryIndexRow): DiscoveryPlace {
     coordinateSystem,
     cuisineSlugs: stringArray(row.cuisine_slugs),
     sceneTags: stringArray(row.scene_tags),
-    pricePerPerson: nullableNumber(row.price_per_person),
+    pricePerPerson: priceSummary.avgPricePerPerson ?? nullableNumber(row.price_per_person),
+    priceSummary,
     recommendedItems: stringArray(row.recommended_items),
     review: nullableString(row.short_review),
     lastMarkedAt: nullableString(row.last_marked_at),
@@ -139,6 +145,76 @@ export async function loadDiscoveryIndexV23(
     return { status: "overflow", places, reason: "safety_limit" };
   }
 
+  if (!places.length) {
+    recordServerMetric("discovery.index", { route, outcome: "empty", count: 0 });
+    return { status: "empty", places: [] };
+  }
+  const invalidCoordinateCount = places.filter((place) => !isValidGcj02Coordinate(place)).length;
+  if (invalidCoordinateCount > 0) {
+    recordServerMetric("discovery.index_invalid_coordinates", { route, outcome: "error", count: invalidCoordinateCount });
+    return { status: "invalid_coordinates", places, invalidCoordinateCount };
+  }
+  const mapPlaces = places as MapDiscoveryPlace[];
+  recordServerMetric("discovery.index", { route, outcome: "ok", count: mapPlaces.length });
+  return { status: "complete", places: mapPlaces };
+}
+
+/** V2.4.2 keeps the V2.3 page contract but reads the versioned price aggregate. */
+export async function loadDiscoveryIndexV242(
+  supabase: SupabaseLike,
+  route = "/",
+): Promise<DiscoveryIndexResult> {
+  const places: DiscoveryPlace[] = [];
+  const ids = new Set<string>();
+  let beforeCreatedAt: string | null = null;
+  let beforeId: string | null = null;
+  let hasMore = false;
+
+  for (let pageNumber = 0; pageNumber < discoveryIndexMaxPages; pageNumber += 1) {
+    const { data, error } = await measureServerOperation(route, "discovery.index_page", () => supabase.rpc("list_discovery_index_v2_4_2", {
+      p_limit: discoveryIndexPageSize,
+      p_before_created_at: beforeCreatedAt,
+      p_before_id: beforeId,
+    }));
+    if (error || !Array.isArray(data)) {
+      recordServerMetric("discovery.index", { route, outcome: "error", count: places.length });
+      return { status: "error", places, reason: "page_failed" };
+    }
+    const rows = data as DiscoveryIndexRow[];
+    if (rows.length > discoveryIndexPageSize) {
+      recordServerMetric("discovery.index", { route, outcome: "error", count: places.length });
+      return { status: "error", places, reason: "page_failed" };
+    }
+    if (!rows.length && hasMore) {
+      recordServerMetric("discovery.index", { route, outcome: "error", count: places.length });
+      return { status: "error", places, reason: "page_empty" };
+    }
+    for (const row of rows) {
+      const place = discoveryPlaceFromIndexRow(row);
+      if (!place.id || ids.has(place.id)) {
+        recordServerMetric("discovery.index", { route, outcome: "error", count: places.length });
+        return { status: "error", places, reason: "duplicate_id" };
+      }
+      ids.add(place.id);
+      places.push(place);
+    }
+    const lastRow = rows.at(-1);
+    hasMore = Boolean(lastRow?.has_more);
+    if (!hasMore) break;
+    const nextCreatedAt = nullableString(lastRow?.next_cursor_created_at);
+    const nextId = nullableString(lastRow?.next_cursor_id);
+    if (!nextCreatedAt || !nextId || (nextCreatedAt === beforeCreatedAt && nextId === beforeId)) {
+      recordServerMetric("discovery.index", { route, outcome: "error", count: places.length });
+      return { status: "error", places, reason: "cursor_stalled" };
+    }
+    beforeCreatedAt = nextCreatedAt;
+    beforeId = nextId;
+  }
+
+  if (hasMore) {
+    recordServerMetric("discovery.index", { route, outcome: "error", count: places.length });
+    return { status: "overflow", places, reason: "safety_limit" };
+  }
   if (!places.length) {
     recordServerMetric("discovery.index", { route, outcome: "empty", count: 0 });
     return { status: "empty", places: [] };

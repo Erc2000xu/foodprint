@@ -73,7 +73,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.113.0
       - name: Build a clean local Supabase database
         run: supabase db start
       - name: Reapply every committed migration
@@ -133,7 +133,7 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.113.0
       - name: Link the production project
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
       - name: Show the production migration plan

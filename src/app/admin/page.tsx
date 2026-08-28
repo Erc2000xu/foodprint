@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { DataExportPanel } from "@/components/admin/data-export-panel";
 import { LeaveGroupButton } from "@/components/admin/leave-group-button";
+import { LocationPreferenceControl } from "@/components/admin/location-preference-control";
+import { LogoutButton } from "@/components/admin/logout-button";
 import { PersonalPlaceLists, type PersonalPlace } from "@/components/admin/personal-place-lists";
 import { InstallGuide } from "@/components/pwa/install-guide";
 import { ContentReadyMarker } from "@/components/navigation/content-ready-marker";
@@ -61,20 +63,16 @@ export default async function AdminPage() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
   const deferredAdminData: Promise<AdminDeferredData> = (async () => {
     const membersResult = isOwner ? await supabase.rpc("list_group_members_for_management", { p_group_id: membership.group_id }) : { data: [] };
-    if (!isManager) return { members: [], invitations: [], groupPlaces: [], places: [], cuisines: [], photos: [], activeManaged: [], archivedManaged: [], hiddenManaged: [], pendingManaged: [], removedManaged: [] };
+    if (!isManager) return { members: [], invitations: [], groupPlaces: [], places: [], cuisines: [], photos: [], managementCounts: null, managementCountsError: false };
     const { data: allGroupPlaces } = await supabase.from("group_places").select("id, place_id").eq("group_id", membership.group_id).eq("status", "active").order("created_at", { ascending: false }).limit(120);
     const allGroupPlaceIds = (allGroupPlaces ?? []).map((place) => place.id);
     const allPlaceIds = (allGroupPlaces ?? []).map((place) => place.place_id);
-    const [invitationsResult, placesResult, cuisinesResult, photosResult, activeResult, archivedResult, hiddenResult, pendingResult, removedResult] = await Promise.all([
+    const [invitationsResult, placesResult, cuisinesResult, photosResult, managementCountsResult] = await Promise.all([
       supabase.rpc("list_group_invitations", { p_group_id: membership.group_id }),
       allPlaceIds.length ? supabase.from("places").select("id, name, address, city, district").in("id", allPlaceIds).limit(120) : Promise.resolve({ data: [] }),
       allGroupPlaceIds.length ? supabase.from("place_cuisines").select("group_place_id, cuisine_slug").in("group_place_id", allGroupPlaceIds).limit(240) : Promise.resolve({ data: [] }),
       allGroupPlaceIds.length ? supabase.from("photos").select("group_place_id").in("group_place_id", allGroupPlaceIds).is("deleted_at", null).limit(240) : Promise.resolve({ data: [] }),
-      supabase.rpc("list_group_place_management", { p_group_id: membership.group_id, p_status: "active", p_query: null, p_cursor: null, p_limit: 10 }),
-      supabase.rpc("list_group_place_management", { p_group_id: membership.group_id, p_status: "archived", p_query: null, p_cursor: null, p_limit: 10 }),
-      supabase.rpc("list_hidden_group_content", { p_group_id: membership.group_id, p_limit: 10 }),
-      supabase.rpc("list_managed_place_candidates", { p_group_id: membership.group_id, p_status: "pending", p_limit: 10 }),
-      supabase.rpc("list_managed_place_candidates", { p_group_id: membership.group_id, p_status: "dismissed", p_limit: 10 }),
+      supabase.rpc("get_group_content_management_counts_v2_4_2"),
     ]);
     return {
       members: (membersResult.data ?? []) as AdminDeferredData["members"],
@@ -83,13 +81,15 @@ export default async function AdminPage() {
       places: (placesResult.data ?? []) as AdminDeferredData["places"],
       cuisines: (cuisinesResult.data ?? []) as AdminDeferredData["cuisines"],
       photos: (photosResult.data ?? []) as AdminDeferredData["photos"],
-      activeManaged: (activeResult.data ?? []) as AdminDeferredData["activeManaged"],
-      archivedManaged: (archivedResult.data ?? []) as AdminDeferredData["archivedManaged"],
-      hiddenManaged: (hiddenResult.data ?? []) as AdminDeferredData["hiddenManaged"],
-      pendingManaged: (pendingResult.data ?? []) as AdminDeferredData["pendingManaged"],
-      removedManaged: (removedResult.data ?? []) as AdminDeferredData["removedManaged"],
+      managementCounts: managementCountsResult.error || !managementCountsResult.data?.[0] ? null : {
+        activePlaceCount: Number(managementCountsResult.data[0].active_place_count ?? 0),
+        archivedPlaceCount: Number(managementCountsResult.data[0].archived_place_count ?? 0),
+        candidateCount: Number(managementCountsResult.data[0].candidate_count ?? 0),
+        hiddenContentCount: Number(managementCountsResult.data[0].hidden_content_count ?? 0),
+      },
+      managementCountsError: Boolean(managementCountsResult.error),
     };
   })();
 
-  return <AppShell activeNav="我的" groupName={group.name}><section className="admin-page"><header><p className="eyebrow">{group.name}</p><h1>我的</h1><p>当前身份：{roleLabel(membership.role as MemberDirectoryRow["role"])}</p></header><PersonalPlaceLists marks={personalMarks} wishlist={personalWishlist} /><section className="admin-card"><h2>安装食迹 App</h2><InstallGuide /></section><ContentReadyMarker route="/admin" /><AdminDeferredErrorBoundary><Suspense fallback={<section className="admin-card" aria-live="polite"><h2>管理区正在加载</h2><p>个人摘要已经可用，其余管理面板稍后出现。</p></section>}><AdminDeferredPanels data={deferredAdminData} groupId={group.id} appUrl={appUrl} isOwner={isOwner} isManager={isManager} /></Suspense></AdminDeferredErrorBoundary><DataExportPanel isOwner={isOwner} /><LeaveGroupButton groupId={membership.group_id} isOwner={isOwner} /></section></AppShell>;
+  return <AppShell activeNav="我的" groupName={group.name}><section className="admin-page"><header><p className="eyebrow">{group.name}</p><h1>我的</h1><p>当前身份：{roleLabel(membership.role as MemberDirectoryRow["role"])}</p><LogoutButton userId={user.id} /></header><PersonalPlaceLists marks={personalMarks} wishlist={personalWishlist} /><LocationPreferenceControl userId={user.id} /><section className="admin-card"><h2>安装食迹 App</h2><InstallGuide /></section><ContentReadyMarker route="/admin" /><AdminDeferredErrorBoundary><Suspense fallback={<section className="admin-card" aria-live="polite"><h2>管理区正在加载</h2><p>个人摘要已经可用，其余管理面板稍后出现。</p></section>}><AdminDeferredPanels data={deferredAdminData} groupId={group.id} appUrl={appUrl} isOwner={isOwner} isManager={isManager} /></Suspense></AdminDeferredErrorBoundary><DataExportPanel isOwner={isOwner} /><LeaveGroupButton groupId={membership.group_id} isOwner={isOwner} /></section></AppShell>;
 }

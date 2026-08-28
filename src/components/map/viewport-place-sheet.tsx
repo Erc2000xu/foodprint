@@ -8,6 +8,7 @@ import { sceneTagLabels } from "@/lib/mark-options";
 import { BowlIcon, toBowlLevel } from "@/components/recommendation/bowl-icon";
 import { DiscoveryCardPhoto } from "@/components/photo/discovery-card-photo";
 import type { ViewportSheetStatus } from "@/components/map/viewport-place-sheet-reducer";
+import { priceSummaryForPlace, priceSummaryLabel } from "@/lib/price";
 
 function placeMeta(place: DiscoveryPlace) {
   return [place.city, place.district, place.businessAreaName].filter(Boolean).join(" · ") || "位置待补充";
@@ -25,7 +26,7 @@ function PlaceRow({ place, onSelect, detailHref, onOpenDetail }: { place: Discov
     <button type="button" className="viewport-sheet__place-select" onClick={onSelect} aria-label={`选择 ${place.name}`}>
       <span className="viewport-sheet__place-photo"><DiscoveryCardPhoto photoId={place.coverPhotoId} initialUrl={place.coverPhotoUrl} width={place.coverPhotoWidth ?? 96} height={place.coverPhotoHeight ?? 96} alt="" /></span>
       <span className="viewport-sheet__place-bowl" aria-hidden="true">{place.bowlStrength ? <BowlIcon level={toBowlLevel(place.bowlStrength)} size="xs" /> : "—"}</span>
-      <span className="viewport-sheet__place-copy"><strong>{place.name}</strong><small>{location || placeMeta(place)} · {friendCount} 位朋友吃过</small></span>
+      <span className="viewport-sheet__place-copy"><strong>{place.name}</strong><small>{location || placeMeta(place)} · {priceSummaryLabel(priceSummaryForPlace(place))} · {friendCount} 位朋友吃过</small></span>
     </button>
     <Link href={detailHref(place.id)} onClick={onOpenDetail}>详情</Link>
   </article>;
@@ -65,7 +66,7 @@ export function ViewportPlaceSheet({
   const frameRef = useRef<number | null>(null);
   const selectedMeta = selectedPlace ? [
     selectedPlace.cuisineSlugs?.[0],
-    selectedPlace.pricePerPerson === null || selectedPlace.pricePerPerson === undefined ? "人均待补充" : `人均 ¥${Math.round(selectedPlace.pricePerPerson)}`,
+    priceSummaryLabel(priceSummaryForPlace(selectedPlace)),
     selectedPlace.sceneTags?.[0] ? sceneTagLabels[selectedPlace.sceneTags[0]] ?? selectedPlace.sceneTags[0] : undefined,
   ].filter(Boolean).join(" · ") : "";
   const nearbyCount = Math.max(0, places.length - (selectedPlace ? 1 : 0));
@@ -156,9 +157,8 @@ export function ViewportPlaceSheet({
             <div className="viewport-sheet__selected-media"><DiscoveryCardPhoto photoId={selectedPlace.coverPhotoId} initialUrl={selectedPlace.coverPhotoUrl} width={selectedPlace.coverPhotoWidth ?? 320} height={selectedPlace.coverPhotoHeight ?? 240} alt={`${selectedPlace.name} 的真实照片`} priority /></div>
             <div className="viewport-sheet__selected-copy"><p className="eyebrow">{selectedPlace.bowlStrength ? ["", "值得去", "想再去", "会专门去"][toBowlLevel(selectedPlace.bowlStrength)] : "共同记录"}</p><h2>{selectedPlace.name}</h2><p>{selectedMeta || placeMeta(selectedPlace)} · {selectedPlace.friendCount ?? selectedPlace.markCount ?? 0} 位朋友吃过</p><p className="viewport-sheet__selected-note">{selectedPlace.recommendedItems?.[0] ? `推荐：${selectedPlace.recommendedItems[0]}` : selectedPlace.review || "朋友留下的真实记录。"}</p></div>
           </div>
-          <div className="viewport-sheet__selected-actions"><Link className="primary-link" href={detailHref(selectedPlace.id)} onClick={onOpenDetail}>查看详情</Link><button type="button" className="text-button" onClick={onOpenViewportList}>看看附近另外 {nearbyCount} 家</button></div>
         </article>
-      </div>
+      </div><div className="viewport-sheet__selected-actions"><Link className="primary-link" href={detailHref(selectedPlace.id)} onClick={onOpenDetail}>查看详情</Link>{nearbyCount > 0 ? <button type="button" className="text-button" onClick={onOpenViewportList}>看看附近另外 {nearbyCount} 家</button> : <button type="button" className="text-button" onClick={onOpenAll}>查看全部地点</button>}</div>
     </>}
     {status === "viewport_list" && <>
       <header className="viewport-sheet__fixed-header" {...dragProps}><strong>当前范围 · {rangeCount} 家</strong><button type="button" onClick={() => onStatusChange(selectedPlace ? "place_preview" : "summary")}>收起</button></header>

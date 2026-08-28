@@ -1,20 +1,22 @@
-# Foodprint V2.4.1 photo-upload repair evidence — 2026-08-20 (updated 2026-08-25)
+# Foodprint V2.4.1 photo-upload repair evidence — 2026-08-20 (updated 2026-08-26)
 
-状态：**候选发布被 SFTP 首传/续传契约阻塞，待修正后重新发布并进行真机/生产验收**。本记录不宣称“已修复”或完成 DoD。
+状态：**仓库实现完成，待真机/生产验收**。候选生产发布已部署并通过单次公网版本校验；文档 DoD 尚未完成。本记录不宣称“修复完成”或正式发布完成。
 
 ## Gate 0 snapshot
 
-- Working branch: `codex/fix-release-transfer` (release transport follow-up).
+- Authoritative production branch: `main`; the local worktree is being used to
+  prepare this evidence update and is not itself a release source.
 - The photo-upload repair was merged through PR #39; the resulting `main` SHA was
   `5d30650cb58e1e8a583b318b7230c4fb87cdd7c5` (verified 2026-08-25).
-- The transport follow-up PR #40 was merged to `main` as
-  `b71817e4b7f32f4a74497763dba522cb9ea5ed6b`, but its candidate release did not
-  install successfully; the next transport correction is not released yet.
-- `https://foodprint.com.cn/api/health` was rechecked before the candidate release
-  and returned `status/service/timestamp` without `version`; production SHA
-  alignment is still not proven.
-- Release workflow now asserts `payload.version === github.sha`; this assertion has
-  not run because the candidate release stopped before installation.
+- The transport follow-up PRs #40 and #41 were merged as
+  `b71817e4b7f32f4a74497763dba522cb9ea5ed6b` and
+  `3076d75ad279f8acad2ef6b6af163fb6bc6f6206`; PR #42 corrected the first-upload
+  versus resume contract and was merged as
+  `b7a01537253f576857187ac7a68b884641c0fdd8`.
+- The candidate release below deployed that exact `main` SHA. The public health
+  response now contains `version`, and the workflow assertion
+  `payload.version === github.sha` passed; this proves the release-chain SHA
+  alignment for this candidate, not the full photo-upload DoD.
 
 ## Candidate production release attempt — 2026-08-25
 
@@ -60,6 +62,36 @@
 - The correction is recorded in PR #42 and must pass CI and a new candidate
   release before transport can be marked PASS.
 
+## Candidate production release — 2026-08-25 (transport/install/health PASS)
+
+- Candidate release workflow: [Release production run 32865215988](https://github.com/Erc2000xu/foodprint/actions/runs/32865215988), using main SHA
+  `b7a01537253f576857187ac7a68b884641c0fdd8`.
+- Intentional release request, clean migration replay, release-candidate
+  Chromium/WebKit gates, production migration plan/application, POI Edge Function
+  deploy, immutable Docker image build and bundle packaging all PASS.
+- The corrected first-upload path used plain SFTP `put` to the remote directory;
+  the log recorded `release bundle upload verified: 94304963 bytes` at
+  `2026-08-25T17:22:25Z`. The bundle was then atomically installed by the
+  Tencent Cloud release installer, which reported
+  `foodprint release b7a01537253f576857187ac7a68b884641c0fdd8 is active`.
+- The workflow's public endpoint assertion passed after a transient connection
+  reset during service restart. An independent check at
+  `2026-08-25T17:23:18.953Z` returned:
+
+  ```json
+  {"status":"ok","service":"foodprint","version":"b7a01537253f576857187ac7a68b884641c0fdd8","timestamp":"2026-08-25T17:23:18.953Z"}
+  ```
+
+- A production request to `/service-worker.js?v=old` returned
+  `foodprint-shell-b7a01537253f576857187ac7a68b884641c0fdd8`, confirming the
+  legacy-query compatibility route emits the current deployment version. This
+  is server-side evidence only; the installed iPhone PWA still needs a real
+  device upgrade test.
+
+- This is a PASS for candidate transport, installation and one public health
+  assertion. It is not a PASS for real-device acceptance, production canary
+  behavior, 24-hour observations or the complete handoff DoD.
+
 ## Local automated evidence
 
 | Check | Result | Evidence |
@@ -99,8 +131,6 @@ buckets and stores no image or identifying data.
 
 ## Still required by the handoff completion definition
 
-- Pass the corrected release-transport CI, deploy only through `Release production`,
-  and prove production health `version` equals the deployed `main` SHA.
 - The clean local Supabase migration replay is now complete: 29 migrations
   reached `20260818100000`, and the required photo schema/RPC/policies were
   found. On 2026-08-25, the local CLI was restarted successfully with API,
@@ -120,4 +150,4 @@ buckets and stores no image or identifying data.
   not treated as a clean security sign-off.
 
 Until every item above has evidence, the status must remain “修复开发中” or
-“候选发布被 SFTP 首传/续传契约阻塞，待修正后重新发布并进行真机/生产验收”。
+“仓库实现完成，待真机/生产验收”。

@@ -8,6 +8,7 @@ import { GoodAtIcon, goodAtOptions, isGoodAtSlug } from "@/components/recommenda
 import { getActiveGroupContext } from "@/lib/auth/active-group-context";
 import { createClient } from "@/lib/supabase/server";
 import { selectPhotoResource } from "@/lib/photos/photo-resource";
+import { visitPriceLabel } from "@/lib/price";
 
 type VisitFeedItem = { visit_record_id: string; group_place_id: string; place_name: string; visited_on: string | null; strength: number; tags: string[]; note: string | null; dishes: string[]; created_at: string; display_name: string; thumbnail_object_keys?: string[] };
 type SignedPhoto = { url: string; width: number; height: number; photoId?: string };
@@ -30,9 +31,14 @@ export default async function ActivityPage() {
   const visits = (feedResult.error ? (await supabase.rpc("list_group_visit_feed", { p_group_id: context.groupId })).data : feedResult.data) as VisitFeedItem[];
   const visibleVisits = (visits ?? []).slice(0, 20);
   const visitIds = visibleVisits.map((visit) => visit.visit_record_id);
-  const photoRows = visitIds.length
-    ? await supabase.from("photos").select("id, visit_record_id, object_key, width, height, thumbnail_object_key, thumbnail_width, thumbnail_height").in("visit_record_id", visitIds).is("deleted_at", null).is("hidden_at", null).order("sort_order").limit(40)
-    : { data: [] };
+  const photoRowsPromise = visitIds.length
+    ? supabase.from("photos").select("id, visit_record_id, object_key, width, height, thumbnail_object_key, thumbnail_width, thumbnail_height").in("visit_record_id", visitIds).is("deleted_at", null).is("hidden_at", null).order("sort_order").limit(40)
+    : Promise.resolve({ data: [] });
+  const visitPriceRowsPromise = visitIds.length
+    ? supabase.from("visit_records").select("id, price_per_person").in("id", visitIds).is("deleted_at", null).is("hidden_at", null)
+    : Promise.resolve({ data: [] as Array<{ id: string; price_per_person: number | string | null }> });
+  const [photoRows, visitPriceRows] = await Promise.all([photoRowsPromise, visitPriceRowsPromise]);
+  const priceByVisitId = new Map((visitPriceRows.data ?? []).map((row) => [row.id, row.price_per_person]));
   const photoResources = (photoRows.data ?? []).flatMap((photo) => {
     const resource = selectPhotoResource(photo);
     return resource ? [{ photo, resource }] : [];
@@ -49,5 +55,5 @@ export default async function ActivityPage() {
     photosByVisit.set(visit.visit_record_id, (rowPhotos.length ? rowPhotos : rpcPhotos).slice(0, 2));
   });
 
-  return <AppShell activeNav="饭后聊" groupName={context.groupName}><section className="activity-page"><p className="eyebrow">饭后聊</p><h1 className="creative-title">吃过以后，留下几句话。</h1><p className="activity-intro">每一条，都是一位成员的真实感受。</p>{visibleVisits.length ? <ol className="activity-list">{visibleVisits.map((visit) => <li key={visit.visit_record_id}><span className="member-avatar">{visit.display_name.slice(0, 1) || "食"}</span><div><p><strong>{visit.display_name}</strong> 去了 <PendingNavigationLink href={`/place/${visit.group_place_id}`} navigationSource="place-card">{visit.place_name}</PendingNavigationLink></p><b className="inline-bowl-strength"><BowlIcon level={toBowlLevel(visit.strength)} size="xs" /> {bowlLabels[visit.strength]}</b>{visit.tags?.length ? <div className="mark-scene-tags good-at-tag-list">{visit.tags.map((tag) => <span key={tag}>{isGoodAtSlug(tag) && <GoodAtIcon slug={tag} size={28} />}{goodAtOptions.find((option) => option.slug === tag)?.label ?? tag}</span>)}</div> : null}{visit.note && <blockquote>{visit.note}</blockquote>}{visit.dishes.length ? <small>推荐：{visit.dishes.join("、")}</small> : null}{(photosByVisit.get(visit.visit_record_id) ?? []).length > 0 && <div className="activity-photo-strip">{photosByVisit.get(visit.visit_record_id)!.map((photo, index) => <PrivatePhoto key={`${visit.visit_record_id}-${index}`} photoId={photo.photoId} src={photo.url} alt={`${visit.place_name} 的到访照片 ${index + 1}`} width={photo.width} height={photo.height} />)}</div>}{visit.visited_on && <small>到访：{visit.visited_on}</small>}<time>{relativeTime(visit.created_at)}</time></div></li>)}</ol> : <div className="empty-state"><strong>还没有新的饭后聊</strong><span>新的到访记录会显示在这里。</span></div>}<ContentReadyMarker route="/activity" /></section></AppShell>;
+  return <AppShell activeNav="饭后聊" groupName={context.groupName}><section className="activity-page"><p className="eyebrow">饭后聊</p><h1 className="creative-title">吃过以后，留下几句话。</h1><p className="activity-intro">每一条，都是一位成员的真实感受。</p>{visibleVisits.length ? <ol className="activity-list">{visibleVisits.map((visit) => { const rawPrice = priceByVisitId.get(visit.visit_record_id); const price = rawPrice === null || rawPrice === undefined ? null : visitPriceLabel(Number(rawPrice)); return <li key={visit.visit_record_id}><span className="member-avatar">{visit.display_name.slice(0, 1) || "食"}</span><div><p><strong>{visit.display_name}</strong> 去了 <PendingNavigationLink href={`/place/${visit.group_place_id}`} navigationSource="place-card">{visit.place_name}</PendingNavigationLink></p><b className="inline-bowl-strength"><BowlIcon level={toBowlLevel(visit.strength)} size="xs" /> {bowlLabels[visit.strength]}</b>{visit.tags?.length ? <div className="mark-scene-tags good-at-tag-list">{visit.tags.map((tag) => <span key={tag}>{isGoodAtSlug(tag) && <GoodAtIcon slug={tag} size={28} />}{goodAtOptions.find((option) => option.slug === tag)?.label ?? tag}</span>)}</div> : null}{price && <small>{price}</small>}{visit.note && <blockquote>{visit.note}</blockquote>}{visit.dishes.length ? <small>推荐：{visit.dishes.join("、")}</small> : null}{(photosByVisit.get(visit.visit_record_id) ?? []).length > 0 && <div className="activity-photo-strip">{photosByVisit.get(visit.visit_record_id)!.map((photo, index) => <PrivatePhoto key={`${visit.visit_record_id}-${index}`} photoId={photo.photoId} src={photo.url} alt={`${visit.place_name} 的到访照片 ${index + 1}`} width={photo.width} height={photo.height} />)}</div>}{visit.visited_on && <small>到访：{visit.visited_on}</small>}<time>{relativeTime(visit.created_at)}</time></div></li>; })}</ol> : <div className="empty-state"><strong>还没有新的饭后聊</strong><span>新的到访记录会显示在这里。</span></div>}<ContentReadyMarker route="/activity" /></section></AppShell>;
 }

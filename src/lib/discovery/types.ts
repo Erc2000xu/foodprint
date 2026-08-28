@@ -1,3 +1,5 @@
+import type { PriceSummary } from "@/lib/price";
+
 export type CoordinateSystem = "GCJ-02" | "WGS84" | "unknown";
 
 export type GeoOption = {
@@ -36,6 +38,8 @@ export type DiscoveryPlace = {
   cuisineSlugs?: string[];
   sceneTags: string[];
   pricePerPerson?: number | null;
+  /** Canonical V2.4.2 aggregate; pricePerPerson remains a read compatibility alias. */
+  priceSummary?: PriceSummary;
   recommendedItems?: string[];
   review?: string | null;
   lastMarkedAt?: string | null;

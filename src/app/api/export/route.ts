@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     scope === "group" ? dataClient.from("group_members").select("group_id, user_id, role, status, joined_at, removed_at, created_at, updated_at, profiles(display_name, avatar_path)").eq("group_id", membership.group_id) : Promise.resolve({ data: [] }),
     scope === "group" && groupPlaceIds.length ? dataClient.from("current_opinions").select("*").in("group_place_id", groupPlaceIds) : Promise.resolve({ data: [] }),
     scope === "group" && groupPlaceIds.length ? dataClient.from("visit_records").select("*").in("group_place_id", groupPlaceIds) : Promise.resolve({ data: [] }),
-    scope === "mine" ? supabase.rpc("export_my_v1_3_records", { p_group_id: membership.group_id }) : Promise.resolve({ data: null }),
+    scope === "mine" ? supabase.rpc("export_my_v2_4_2_records", { p_group_id: membership.group_id }) : Promise.resolve({ data: null }),
   ]);
   const referencedGroupPlaceIds = new Set([...marks.map((row) => row.group_place_id), ...(wishlistResult.data ?? []).map((row) => row.group_place_id)]);
   const exportedGroupPlaces = scope === "group" ? groupPlaces ?? [] : (groupPlaces ?? []).filter((row) => referencedGroupPlaceIds.has(row.id));
