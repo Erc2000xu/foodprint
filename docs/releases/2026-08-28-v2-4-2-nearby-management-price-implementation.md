@@ -2,7 +2,7 @@
 
 日期：2026-08-28  
 Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`  
-状态：已合入 main 并完成正式发布；代码、向前兼容 migration、数据库 schema lint、类型检查、完整测试、生产构建、PR 官方 CI、生产 migration history 审计与线上健康检查均通过；待真实设备/PWA 验收与生产观察
+状态：已合入 main 并完成正式发布；代码、向前兼容 migration、数据库 schema lint、类型检查、完整测试、生产构建、PR 官方 CI、生产 migration history 审计、生产回填审计与线上健康检查均通过；待真实设备/PWA 验收与生产观察
 
 ## M0 与基线
 
@@ -47,7 +47,7 @@ Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`
 
 - 新 migration 是 forward-only，未改写 29 个已发布 migration。
 - GitHub 生产 migration history audit run `33159484029` 已通过：本地和生产均到 `20260818100000`，未发现缺失或漂移的历史版本；正式发布 run `33159851861` 的 dry-run 列出且随后成功应用 `20260827090000_v2_4_2_nearby_management_price.sql`。
-- 计划中的确定性回填 SQL 已加入；本地干净 `--no-seed` 库查询到 `visit_records_total=0|price_nonnull=0|legacy_links=0`，所以本地本次回填候选为 0。正式发布日志没有保留 migration 内 `RAISE NOTICE` 的回填行数；随后通过 Supabase CLI 发起的生产只读聚合查询在本机连接超时，因此没有把生产回填数猜成 0。生产 schema 已通过线上管理中心和健康检查间接验证，但“精确回填行数”仍是需要受控运维查询补证的记录缺口。
+- 计划中的确定性回填 SQL 已加入；本地干净 `--no-seed` 库查询到 `visit_records_total=0|price_nonnull=0|legacy_links=0`，所以本地本次回填候选为 0。正式发布日志没有保留 migration 内 `RAISE NOTICE` 的回填行数，但随后在 GitHub Actions 生产只读审计 run `33166779531` 中取得了不输出金额/坐标的聚合结果：`deterministic_backfill_candidates=1`、`deterministic_backfill_applied=1`、`deterministic_backfill_missing=0`、`priced_visit_records_total=1`。由于新列在本 migration 中新增、统计限定为 migration 开始前已存在且唯一 `legacy_visit_id` 的有效关系，这 1 条是本次确定性回填的实际数量。
 - 没有执行任何破坏性 down migration，也没有物理删除旧字段、旧 RPC 或照片数据。
 
 ## 自动化验证证据
@@ -67,6 +67,7 @@ Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`
 | 本地只读 SQL 合同检查 | 通过 | migration 登记 `1`；价格约束 `1`；核心表 RLS 全部 `true`；V2.4.2 RPC `9` 个、旧关键 RPC `6` 个均共存 |
 | GitHub PR CI | 通过 | final run `33159635422`：application 与 migration-integrity 均成功；官方 application 包含 lint、typecheck、全量测试、production build 与 ICP build check |
 | Production migration history audit | 通过 | run `33159484029`：production history 与 main 本地 history 均到 `20260818100000` |
+| Production V2.4.2 backfill audit | 通过 | run `33166779531`：应回填 `1`、已回填 `1`、缺失 `0`、当前有价格到访记录 `1`；仅输出聚合数量 |
 | 正式生产发布 | 通过 | run `33159851861`；三道预检、production migration、POI Edge Function、不可变镜像、94,327,855 字节发布包上传、腾讯云安装与公网 `/api/health` 校验均成功 |
 | 发布后公网健康检查 | 通过 | `https://foodprint.com.cn/api/health` 返回 `status=ok`、版本 `812482f716e8eacc2604c82c624306bed902ee85`；首页 HTTP 200 |
 | 线上页面冒烟 | 部分通过 | 正式发现页加载并显示首次附近定位说明、可访问地点 marker；`/admin/content` 加载并显示 Owner/Admin 管理中心及真实计数；本机浏览器的移动尺寸覆盖未生效且第三方统计请求超时，未将其当作真机证据 |
@@ -75,10 +76,10 @@ Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`
 
 ## 外部门禁与已知限制
 
-- 本地 clean replay、SQL/RLS/RPC 结构检查、完整测试、生产构建、PR 官方 lint/构建和正式发布均通过；由于本地使用 `--no-seed` 空库，没有产生可代表生产的回填样本，且本次发布日志没有保留 `RAISE NOTICE`，精确生产回填数仍需受控只读查询补证。
+- 本地 clean replay、SQL/RLS/RPC 结构检查、完整测试、生产构建、PR 官方 lint/构建、正式发布和生产回填审计均通过；本地使用 `--no-seed` 空库没有产生可代表生产的回填样本，但生产实际回填数量已由 `33166779531` 补证为 1。
 - 本机 ESLint 仍会无输出卡住，但同一候选提交的 GitHub 官方 application job 已通过 lint；本地卡住是开发机工具表现，不再阻塞候选发布。
 - 正式发布 workflow 已通过 Chromium/WebKit 实际浏览器上传和 PWA gates；仍没有完成 iOS Safari、Android Chrome、已安装 PWA、北京定位/上海数据情景和 200% 字体的物理真机验收，也没有完成生产 canary、回滚演练与 24 小时观察。
-- 正式 migration 步骤曾出现一次 Supabase CLI 的非阻断警告：`failed to cache migrations catalog`，根因是 `pg-delta` 连接超时；CLI 随后记录 `Finished supabase db push`，后续 POI 部署、应用安装和公网健康检查均成功。该警告不改变已成功发布的结论，但应在后续运维窗口检查连接稳定性。
+- 正式 migration 步骤曾出现一次 Supabase CLI 的非阻断警告：`failed to cache migrations catalog`，根因是 `pg-delta` 连接超时；CLI 随后记录 `Finished supabase db push`，后续 POI 部署、应用安装、公网健康检查和生产只读回填审计均成功。该警告不改变已成功发布的结论，但应在后续运维窗口检查连接稳定性。
 - AMap 选中的商圈/地铁 POI 的半径匹配锚点只保存在本次页面内存；分享/刷新后只保留 POI 身份与文本，不能在无 provider 锚点时复现精确半径，退回身份字段匹配。这是隐私边界下的已知限制。
 - 发现 RPC 复用 V2.4.1 的 V2.3 读模型并仅追加价格聚合；清理历史 RPC/生成类型仍应另版进行。
 
@@ -91,4 +92,4 @@ Spec：`docs/specs/2026-08-v2-4-2-nearby-management-price.md`
 5. 数据库不执行 reset、删列、删函数或删除回填数据；如果发现数据问题，先冻结相关新写入，备份并通过新的 forward-only migration 修正，完成审计和验证后再恢复流量。
 6. 保持 V2.4.1 照片 Worker/WASM、缩略图与私有 Storage 边界原样，不通过回滚本版本去删除或重建照片数据；腾讯云不可用时才按 RELEASE_SOP 使用保留的 Vercel 旧 Production 入口作为人工应急落点。
 
-生产部署和 main 合并已执行，工作分支未删除；下一步是由负责人在正式站点完成真实设备/PWA 验收，并观察 24 小时。精确生产回填行数仍需一次不输出金额/坐标的受控只读聚合查询补入本记录。
+生产部署和 main 合并已执行，工作分支未删除；下一步是由负责人在正式站点完成真实设备/PWA 验收，并观察 24 小时。精确生产回填行数已补入本记录。
