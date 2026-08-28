@@ -38,3 +38,51 @@ jobs:
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
       - name: List local and remote migration history
         run: supabase migration list
+      - name: Record V2.4.2 production backfill aggregates (read-only)
+        shell: bash
+        run: |
+          SUPABASE_TELEMETRY_DISABLED=1 supabase db query --linked "
+            with migration_cutoff as (
+              select timestamptz '2026-08-28T09:36:41.343Z' as started_at
+            )
+            select
+              (select count(*)
+                 from public.visit_records as visit_record
+                 join public.visits as legacy_visit
+                   on legacy_visit.id = visit_record.legacy_visit_id
+                 cross join migration_cutoff
+                where visit_record.created_at < migration_cutoff.started_at
+                  and legacy_visit.price_per_person is not null
+                  and legacy_visit.price_per_person >= 1
+                  and legacy_visit.price_per_person <= 99999
+                  and round(legacy_visit.price_per_person, 2) = legacy_visit.price_per_person
+              ) as deterministic_backfill_candidates,
+              (select count(*)
+                 from public.visit_records as visit_record
+                 join public.visits as legacy_visit
+                   on legacy_visit.id = visit_record.legacy_visit_id
+                 cross join migration_cutoff
+                where visit_record.created_at < migration_cutoff.started_at
+                  and visit_record.price_per_person is not null
+                  and legacy_visit.price_per_person is not null
+                  and legacy_visit.price_per_person >= 1
+                  and legacy_visit.price_per_person <= 99999
+                  and round(legacy_visit.price_per_person, 2) = legacy_visit.price_per_person
+              ) as deterministic_backfill_applied,
+              (select count(*)
+                 from public.visit_records as visit_record
+                 join public.visits as legacy_visit
+                   on legacy_visit.id = visit_record.legacy_visit_id
+                 cross join migration_cutoff
+                where visit_record.created_at < migration_cutoff.started_at
+                  and visit_record.price_per_person is null
+                  and legacy_visit.price_per_person is not null
+                  and legacy_visit.price_per_person >= 1
+                  and legacy_visit.price_per_person <= 99999
+                  and round(legacy_visit.price_per_person, 2) = legacy_visit.price_per_person
+              ) as deterministic_backfill_missing,
+              (select count(*)
+                 from public.visit_records
+                where price_per_person is not null
+              ) as priced_visit_records_total;
+          "
