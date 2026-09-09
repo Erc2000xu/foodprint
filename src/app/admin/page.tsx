@@ -12,6 +12,7 @@ import { AdminDeferredErrorBoundary } from "@/components/admin/admin-deferred-er
 import { AppShell } from "@/components/shell/app-shell";
 import { getActiveGroupContext } from "@/lib/auth/active-group-context";
 import { createClient } from "@/lib/supabase/server";
+import { getParkingAccess, listParkingMembers } from "@/lib/adapters/parking-repository";
 
 type MemberDirectoryRow = {
   user_id: string;
@@ -62,8 +63,10 @@ export default async function AdminPage() {
   });
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
   const deferredAdminData: Promise<AdminDeferredData> = (async () => {
+    const parkingAccess = await getParkingAccess(supabase, membership.group_id);
+    const parkingMembers = parkingAccess?.canManage ? await listParkingMembers(supabase, membership.group_id) : [];
     const membersResult = isOwner ? await supabase.rpc("list_group_members_for_management", { p_group_id: membership.group_id }) : { data: [] };
-    if (!isManager) return { members: [], invitations: [], groupPlaces: [], places: [], cuisines: [], photos: [], managementCounts: null, managementCountsError: false };
+    if (!isManager) return { members: [], invitations: [], groupPlaces: [], places: [], cuisines: [], photos: [], managementCounts: null, managementCountsError: false, parkingAccess, parkingMembers };
     const { data: allGroupPlaces } = await supabase.from("group_places").select("id, place_id").eq("group_id", membership.group_id).eq("status", "active").order("created_at", { ascending: false }).limit(120);
     const allGroupPlaceIds = (allGroupPlaces ?? []).map((place) => place.id);
     const allPlaceIds = (allGroupPlaces ?? []).map((place) => place.place_id);
@@ -88,6 +91,8 @@ export default async function AdminPage() {
         hiddenContentCount: Number(managementCountsResult.data[0].hidden_content_count ?? 0),
       },
       managementCountsError: Boolean(managementCountsResult.error),
+      parkingAccess,
+      parkingMembers,
     };
   })();
 
