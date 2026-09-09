@@ -8,6 +8,7 @@ import { getDiscoveryRequestContext, loadDiscoveryIndexV242 } from "@/lib/discov
 import { measureServerOperation } from "@/lib/performance/server";
 import { createClient } from "@/lib/supabase/server";
 import { readDiscoveryMapRuntimeConfig } from "@/lib/env.server";
+import { getParkingAccess } from "@/lib/adapters/parking-repository";
 
 function DiscoveryFallback() {
   return <div className="empty-note">正在打开发现…</div>;
@@ -16,13 +17,16 @@ function DiscoveryFallback() {
 export default async function Home({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const requestedView = (await searchParams).view;
   const mapRuntimeConfig = readDiscoveryMapRuntimeConfig();
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return <AppShell activeNav="发现"><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser places={[]} cuisineOptions={cuisineOptions} mapRuntimeConfig={mapRuntimeConfig} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return <AppShell activeNav="发现"><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser places={[]} cuisineOptions={cuisineOptions} mapRuntimeConfig={mapRuntimeConfig} canUseParking={false} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
   const supabase = await createClient();
   const context = await getDiscoveryRequestContext(supabase, "/");
   if (!context) redirect("/login");
-  const indexResult = await measureServerOperation("/", "discovery.page.total", () => loadDiscoveryIndexV242(supabase), (result) => ({ count: result.places.length, outcome: result.status }));
+  const [indexResult, parkingAccess] = await Promise.all([
+    measureServerOperation("/", "discovery.page.total", () => loadDiscoveryIndexV242(supabase), (result) => ({ count: result.places.length, outcome: result.status })),
+    getParkingAccess(supabase, context.groupId),
+  ]);
   const pagePlaces = indexResult.status === "error" || indexResult.status === "overflow" ? [] : indexResult.places;
   const pageMapConfig = mapRuntimeConfig.enabled && indexResult.status === "complete" && indexResult.places.length > 0 ? mapRuntimeConfig : { enabled: false } as const;
   const mapVariant = requestedView !== "list" && pageMapConfig.enabled;
-  return <AppShell activeNav="发现" groupName={context.groupName} variant={mapVariant ? "map" : "default"}><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser userId={context.userId} canManage={context.role === "owner" || context.role === "admin"} places={pagePlaces} indexStatus={indexResult.status} cuisineOptions={cuisineOptions} mapRuntimeConfig={pageMapConfig} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
+  return <AppShell activeNav="发现" groupName={context.groupName} variant={mapVariant ? "map" : "default"}><Suspense fallback={<DiscoveryFallback />}><DiscoveryBrowser userId={context.userId} canManage={context.role === "owner" || context.role === "admin"} canUseParking={parkingAccess?.canUse === true} places={pagePlaces} indexStatus={indexResult.status} cuisineOptions={cuisineOptions} mapRuntimeConfig={pageMapConfig} /></Suspense><ContentReadyMarker route="/" /></AppShell>;
 }
