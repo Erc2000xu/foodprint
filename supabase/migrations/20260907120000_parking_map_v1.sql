@@ -135,7 +135,7 @@ language sql
 immutable
 set search_path = public
 as $$
-  with values as (
+  with segment_values as (
     select
       public.parking_cross(p_a, p_b, p_c) as cross_abc,
       public.parking_cross(p_a, p_b, p_d) as cross_abd,
@@ -143,12 +143,13 @@ as $$
       public.parking_cross(p_c, p_d, p_b) as cross_cdb
   )
   select
-    (cross_abc = 0 and public.parking_point_on_segment(p_a, p_b, p_c))
-    or (cross_abd = 0 and public.parking_point_on_segment(p_a, p_b, p_d))
-    or (cross_cda = 0 and public.parking_point_on_segment(p_c, p_d, p_a))
-    or (cross_cdb = 0 and public.parking_point_on_segment(p_c, p_d, p_b))
-    or ((cross_abc > 0 and cross_abd < 0 or cross_abc < 0 and cross_abd > 0)
-      and (cross_cda > 0 and cross_cdb < 0 or cross_cda < 0 and cross_cdb > 0));
+    (segment_values.cross_abc = 0 and public.parking_point_on_segment(p_a, p_b, p_c))
+    or (segment_values.cross_abd = 0 and public.parking_point_on_segment(p_a, p_b, p_d))
+    or (segment_values.cross_cda = 0 and public.parking_point_on_segment(p_c, p_d, p_a))
+    or (segment_values.cross_cdb = 0 and public.parking_point_on_segment(p_c, p_d, p_b))
+    or ((segment_values.cross_abc > 0 and segment_values.cross_abd < 0 or segment_values.cross_abc < 0 and segment_values.cross_abd > 0)
+      and (segment_values.cross_cda > 0 and segment_values.cross_cdb < 0 or segment_values.cross_cda < 0 and segment_values.cross_cdb > 0))
+  from segment_values;
 $$;
 
 create or replace function public.parking_geometry_is_valid(
