@@ -28,6 +28,9 @@ describe("motorcycle parking V1 contract", () => {
     expect(migration).toContain("revoke all on function public.can_use_parking(uuid, uuid) from public, anon, authenticated");
     expect(migration).not.toContain("grant execute on function public.can_use_parking(uuid, uuid) to authenticated");
     expect(migration).toContain("case when v_can_manage then 1 else 0 end");
+    expect(migration).toContain("with segment_values as (");
+    expect(migration).toContain("from segment_values;");
+    expect(migration).toContain("segment_values.cross_abc");
   });
 
   it("binds the manager to a verified existing owner and revokes access on suspension/removal", () => {
